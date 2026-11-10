@@ -154,7 +154,7 @@ const port = portArg >= 0 ? serverArgs[portArg + 1] : "3920";
 console.log("[dev-cli] serving frontend from", clientDir);
 console.log("[dev-cli] 改 client/ 后浏览器刷新即可；改 .ts 会自动编译并重启服务");
 console.log(`[dev-cli] 请手动打开 http://127.0.0.1:${port}/ （默认不自动弹浏览器；需要时加 --open）`);
-console.log("[dev-cli] starting:", "protoview", serverArgs.join(" "));
+console.log("[dev-cli] starting:", "oceanview", serverArgs.join(" "));
 
 run(
   "node",
@@ -167,8 +167,8 @@ run(
     cwd: root,
     env: {
       ...process.env,
-      PROTOVIEW_PUBLIC_DIR: clientDir,
-      PROTOVIEW_DEV: "1",
+      OCEANVIEW_PUBLIC_DIR: clientDir,
+      OCEANVIEW_DEV: "1",
     },
   },
 );

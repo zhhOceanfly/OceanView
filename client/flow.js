@@ -1,9 +1,9 @@
 (() => {
-  const FLOW_KEY = "protoview.client.flow";
-  const GLOBAL_VARS_KEY = "protoview.client.globalVars";
+  const FLOW_KEY = "oceanview.client.flow";
+  const GLOBAL_VARS_KEY = "oceanview.client.globalVars";
   /** 勾选了「附加到全局 Metadata」的变量名（按名字跨作用域生效） */
-  const META_VARS_KEY = "protoview.client.metaVars";
-  const api = () => window.ProtoViewClient;
+  const META_VARS_KEY = "oceanview.client.metaVars";
+  const api = () => window.OceanViewClient;
   const $ = (id) => document.getElementById(id);
 
   const flow = {
@@ -72,7 +72,7 @@
   };
   const HISTORY_LIMIT = 80;
   let nodeClipboard = null;
-  const FLOAT_TOOLS_KEY = "protoview.client.flow.tools";
+  const FLOAT_TOOLS_KEY = "oceanview.client.flow.tools";
   const UNDO_LIMIT = 40;
   /** 上一次提交后的画布快照（用于撤销对比） */
   let lastSnapshot = "";
@@ -236,7 +236,7 @@
   function flowSnapshot() {
     return {
       version: 1,
-      kind: "protoview.flow",
+      kind: "oceanview.flow",
       exportedAt: new Date().toISOString(),
       nodes: flow.nodes.map((node) => serializeNode(node)),
       edges: flow.edges.map((edge) => ({
@@ -258,7 +258,7 @@
     }
     // VS Code webview：交给扩展保存对话框；CLI / 浏览器：直接下载 JSON
     if (api()?.isVsCodeHost?.() && api()?.postHost?.("exportFlow", snapshot)) return;
-    downloadJson(snapshot, `protoview-flow-${flowStamp()}.json`);
+    downloadJson(snapshot, `oceanview-flow-${flowStamp()}.json`);
     void notify("已导出链路配置");
   }
 
@@ -361,8 +361,8 @@
     if (!raw || typeof raw !== "object") {
       return { ok: false, error: "导入失败：文件内容无效" };
     }
-    if (raw.kind && raw.kind !== "protoview.flow") {
-      return { ok: false, error: "导入失败：不是 ProtoView 链路配置文件" };
+    if (raw.kind && raw.kind !== "oceanview.flow") {
+      return { ok: false, error: "导入失败：不是 OceanView 链路配置文件" };
     }
     const nodesIn = Array.isArray(raw.nodes) ? raw.nodes : null;
     const edgesIn = Array.isArray(raw.edges) ? raw.edges : null;
@@ -755,8 +755,8 @@
   let inspectIgnoreOutsideUntil = 0;
   let inspectHeight = 0;
   let inspectWidth = 0;
-  const INSPECT_H_KEY = "protoview.client.flow.inspectHeight";
-  const INSPECT_W_KEY = "protoview.client.flow.inspectWidth";
+  const INSPECT_H_KEY = "oceanview.client.flow.inspectHeight";
+  const INSPECT_W_KEY = "oceanview.client.flow.inspectWidth";
 
   function applyInspectHeight(client) {
     if (!client) return;
@@ -1610,7 +1610,7 @@
   const askConfirm = (message) => showDialog(message, { confirm: true });
   const notify = (message) => showDialog(message, { confirm: false });
   // 供 app.js / db.js 复用（webview 里原生 confirm 不可靠）
-  window.ProtoViewDialog = { confirm: askConfirm, alert: notify };
+  window.OceanViewDialog = { confirm: askConfirm, alert: notify };
 
   function clearCanvas() {
     void askConfirm("清空链路画布？此操作不可撤销。").then(async (ok) => {
@@ -4178,7 +4178,7 @@
     if ($("flowStressTitle")) $("flowStressTitle").textContent = `压测 · ${step.name || "步骤"}`;
     if ($("flowStressResult")) $("flowStressResult").innerHTML = "";
     $("flowStressProgressWrap")?.classList.add("hidden");
-    try { if ($("flowStressGhzPath")) $("flowStressGhzPath").value = localStorage.getItem("protoview.client.ghzPath") || ""; } catch { /* ignore */ }
+    try { if ($("flowStressGhzPath")) $("flowStressGhzPath").value = localStorage.getItem("oceanview.client.ghzPath") || ""; } catch { /* ignore */ }
     syncFlowStressGhzUi();
     $("flowStressModal")?.classList.add("show");
   }
@@ -4306,7 +4306,7 @@
     if (box) box.innerHTML = `<pre class="stress-log" id="flowGhzLog">启动 ghz…\n</pre>`;
     setFlowStressRunning(true);
     const binary = ($("flowStressGhzPath")?.value || "").trim() || "ghz";
-    try { localStorage.setItem("protoview.client.ghzPath", binary); } catch { /* ignore */ }
+    try { localStorage.setItem("oceanview.client.ghzPath", binary); } catch { /* ignore */ }
     if (!api()?.postHost?.("runGhz", { id, args, binary })) {
       if (box) box.innerHTML = `<div class="stress-empty stress-fail">需要在 VS Code Client 里运行 ghz</div>`;
       setFlowStressRunning(false);
@@ -4368,7 +4368,7 @@
   function renderFlowTplList() {
     const el = $("flowTplList");
     if (!el) return;
-    const builtins = (Array.isArray(window.ProtoViewFlowTemplates) ? window.ProtoViewFlowTemplates : [])
+    const builtins = (Array.isArray(window.OceanViewFlowTemplates) ? window.OceanViewFlowTemplates : [])
       .filter((tpl) => {
         if (!tpl?.requiresRpc) return true;
         const rpcs = api()?.listRpcs?.() || [];
@@ -4401,7 +4401,7 @@
   }
 
   function currentTemplateById(id) {
-    const builtins = Array.isArray(window.ProtoViewFlowTemplates) ? window.ProtoViewFlowTemplates : [];
+    const builtins = Array.isArray(window.OceanViewFlowTemplates) ? window.OceanViewFlowTemplates : [];
     return builtins.find((tpl) => tpl.id === id) || userTemplates.find((tpl) => tpl.id === id) || null;
   }
 
@@ -4444,7 +4444,7 @@
         try { userTemplates = await requestTemplates("loadTemplates"); }
         catch { /* 首次保存目录可能还不存在 */ }
       }
-      const builtins = Array.isArray(window.ProtoViewFlowTemplates) ? window.ProtoViewFlowTemplates : [];
+      const builtins = Array.isArray(window.OceanViewFlowTemplates) ? window.OceanViewFlowTemplates : [];
       const conflict = [...builtins, ...userTemplates].find((tpl) => {
         const sameName = String(tpl?.name || "").trim() === name;
         const sameId = String(tpl?.id || "") === id;
@@ -5385,7 +5385,7 @@
   }
 
   // Expose early so app.js drag-drop can call even if later bind steps fail
-  window.ProtoViewFlow = {
+  window.OceanViewFlow = {
     addNode,
     addStartNode,
     addSelected,
@@ -5494,7 +5494,7 @@
     }, true);
     $("flowExportBtn")?.addEventListener("click", exportFlow);
     $("flowImportBtn")?.addEventListener("click", requestImportFlow);
-    window.addEventListener("protoview-flow-add", (event) => {
+    window.addEventListener("oceanview-flow-add", (event) => {
       const { rpcId, label, clientX, clientY } = event.detail || {};
       if (!rpcId) return;
       if (!isFlowOpen()) openFlow();
@@ -5748,7 +5748,7 @@
 
     const stage = $("flowStage");
     if (!stage) {
-      console.warn("ProtoView flow: #flowStage not found");
+      console.warn("OceanView flow: #flowStage not found");
       return;
     }
 
@@ -5927,7 +5927,7 @@
       let rpcId = event.dataTransfer.getData("text/plain");
       let label = "";
       try {
-        const packed = JSON.parse(event.dataTransfer.getData("application/x-protoview-rpc") || "null");
+        const packed = JSON.parse(event.dataTransfer.getData("application/x-oceanview-rpc") || "null");
         if (packed?.id) {
           rpcId = packed.id;
           label = packed.label || "";
@@ -6228,7 +6228,7 @@
     hideMenu();
     hideEdgeMenu();
     render();
-    window.ProtoViewFlow = {
+    window.OceanViewFlow = {
       addNode,
       addStartNode,
       addSelected,
@@ -6245,8 +6245,8 @@
     };
   }
 
-  window.ProtoViewFlow = {
-    ...(window.ProtoViewFlow || {}),
+  window.OceanViewFlow = {
+    ...(window.OceanViewFlow || {}),
     onHostStreamEvent,
   };
 

@@ -13,7 +13,7 @@ export interface OpenEditorResult {
 /**
  * CLI / 浏览器模式下打开本机编辑器。
  *
- * @param preferred 指定编辑器：cursor / code / notepad / 或模板命令；空则走 PROTOVIEW_EDITOR / 自动探测
+ * @param preferred 指定编辑器：cursor / code / notepad / 或模板命令；空则走 OCEANVIEW_EDITOR / 自动探测
  */
 export async function openInEditor(
   file: string,
@@ -26,12 +26,12 @@ export async function openInEditor(
   }
   const ln = Math.max(1, Math.floor(Number(line) || 1));
 
-  const pick = String(preferred || process.env.PROTOVIEW_EDITOR || "").trim();
+  const pick = String(preferred || process.env.OCEANVIEW_EDITOR || "").trim();
   if (pick) {
     const result = await runConfigured(pick, abs, ln);
     if (result.ok) return result;
     if (preferred) return { ok: false, detail: `无法用 ${preferred} 打开：${result.detail}` };
-    return { ok: false, detail: `PROTOVIEW_EDITOR 打开失败：${result.detail}` };
+    return { ok: false, detail: `OCEANVIEW_EDITOR 打开失败：${result.detail}` };
   }
 
   for (const name of autoCandidates()) {
@@ -42,7 +42,7 @@ export async function openInEditor(
 
   return {
     ok: false,
-    detail: "未找到编辑器。可在页面选择 Cursor / VS Code / 记事本，或设置 PROTOVIEW_EDITOR=cursor",
+    detail: "未找到编辑器。可在页面选择 Cursor / VS Code / 记事本，或设置 OCEANVIEW_EDITOR=cursor",
   };
 }
 

@@ -15,7 +15,7 @@ export async function materializeProtoUpload(options: {
   const files = Array.isArray(options.files) ? options.files : [];
   const label = String(options.name || "proto").trim() || "proto";
   const safeLabel = label.replace(/[<>:"/\\|?*\u0000-\u001f]+/g, "_").slice(0, 64) || "proto";
-  const staging = await fs.promises.mkdtemp(path.join(os.tmpdir(), "protoview-dir-"));
+  const staging = await fs.promises.mkdtemp(path.join(os.tmpdir(), "oceanview-dir-"));
   const root = path.join(staging, safeLabel);
   await fs.promises.mkdir(root, { recursive: true });
   let count = 0;
@@ -46,7 +46,7 @@ export async function materializeGhzUpload(options: {
   const name = path.basename(String(options.name || "ghz").trim() || "ghz");
   const b64 = String(options.base64 || "");
   if (!b64) return undefined;
-  const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "protoview-ghz-"));
+  const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "oceanview-ghz-"));
   const dest = path.join(dir, name);
   await fs.promises.writeFile(dest, Buffer.from(b64, "base64"));
   if (process.platform !== "win32") {

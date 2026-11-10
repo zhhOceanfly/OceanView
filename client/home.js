@@ -8,7 +8,7 @@
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
-  const vscode = window.__protoViewPost || (() => {
+  const vscode = window.__oceanViewPost || (() => {
     // app.js 里已建立 bridge，这里复用它的 postMessage
     return null;
   })();
@@ -60,10 +60,10 @@
       ensureExcelCatalog();
       updateExcelDiffButton();
     }
-    if (view === "docs") window.ProtoViewDocs?.ensure?.();
-    if (view === "db") window.ProtoViewDb?.ensure?.();
+    if (view === "docs") window.OceanViewDocs?.ensure?.();
+    if (view === "db") window.OceanViewDb?.ensure?.();
     if (view === "home") requestAnimationFrame(() => $("homeSearch")?.focus());
-    if (view === "client") window.ProtoViewFlow?.ensureClientHome?.();
+    if (view === "client") window.OceanViewFlow?.ensureClientHome?.();
   }
 
   /** 入口：已打开就切过去，没有才新建标签 */
@@ -100,7 +100,7 @@
 
   // ===== 宿主通信 =====
   function post(type, payload) {
-    const send = window.ProtoViewHost?.post;
+    const send = window.OceanViewHost?.post;
     if (typeof send === "function") {
       send(type, payload);
       return true;
@@ -141,7 +141,7 @@
 
   function requestGitChanges(force = false) {
     // 没有宿主时无法判断是否是 git 项目，直接跳过
-    if (!window.ProtoViewHost?.isHost?.() && !window.__protoViewPost) return;
+    if (!window.OceanViewHost?.isHost?.() && !window.__oceanViewPost) return;
     if (gitState.requested && !force) return;
     gitState.requested = true;
     post("gitChanges", { force });
@@ -166,13 +166,13 @@
   }
 
   function rerenderForChangeFilter() {
-    try { window.ProtoViewExcel?.rerender?.(); } catch { /* ignore */ }
-    try { window.ProtoViewDocs?.rerender?.(); } catch { /* ignore */ }
-    try { window.ProtoViewDb?.rerender?.(); } catch { /* ignore */ }
-    try { window.ProtoViewClient?.rerenderTree?.(); } catch { /* ignore */ }
+    try { window.OceanViewExcel?.rerender?.(); } catch { /* ignore */ }
+    try { window.OceanViewDocs?.rerender?.(); } catch { /* ignore */ }
+    try { window.OceanViewDb?.rerender?.(); } catch { /* ignore */ }
+    try { window.OceanViewClient?.rerenderTree?.(); } catch { /* ignore */ }
   }
 
-  window.ProtoViewGit = {
+  window.OceanViewGit = {
     isChanged,
     changeOnly,
     isGit: () => gitState.ok,
@@ -213,7 +213,7 @@
     }
     if (catalog?.warnings?.length) {
       // 只在有问题时提示，不打断使用
-      console.warn("[ProtoView] excel warnings:", catalog.warnings.slice(0, 5));
+      console.warn("[OceanView] excel warnings:", catalog.warnings.slice(0, 5));
     }
   }
 
@@ -237,7 +237,7 @@
       groups.set(key, bucket);
     }
     const files = [...groups.entries()].filter(([file, sheets]) => {
-      if (changeOnly("excelChangeOnly") && !window.ProtoViewGit?.isChanged?.(file)) return false;
+      if (changeOnly("excelChangeOnly") && !window.OceanViewGit?.isChanged?.(file)) return false;
       if (!q) return true;
       const blob = `${file} ${sheets.map((sheet) => `${sheet.fileName} ${sheet.sheet}`).join(" ")}`.toLowerCase();
       return blob.includes(q);
@@ -247,10 +247,10 @@
         ? "当前变更里没有 Excel 表"
         : (state.sheets.length ? "没有匹配的表" : "未找到 Excel 文件");
       list.innerHTML = `<div class="excel-empty">${empty}</div>`;
-      window.ProtoViewPager?.renderPager?.($("excelPager"), { page: 0, pages: 1, total: 0 }, () => {});
+      window.OceanViewPager?.renderPager?.($("excelPager"), { page: 0, pages: 1, total: 0 }, () => {});
       return;
     }
-    const pager = window.ProtoViewPager || { paginate: (items) => ({ slice: items, page: 0, pages: 1, total: items.length }), renderPager: () => {} };
+    const pager = window.OceanViewPager || { paginate: (items) => ({ slice: items, page: 0, pages: 1, total: items.length }), renderPager: () => {} };
     const result = pager.paginate(files, state.excelPage || 0, state.excelPageSize || 60);
     state.excelPage = result.page;
     list.innerHTML = result.slice.map(([file, sheets]) => {
@@ -285,7 +285,7 @@
     state.excelDiff = payload || null;
     if (!payload?.ok) {
       view.classList.add("hidden");
-      window.ProtoViewClient?.notify?.(payload?.error || "无法对比该表");
+      window.OceanViewClient?.notify?.(payload?.error || "无法对比该表");
       return;
     }
     renderExcelDiff();
@@ -378,7 +378,7 @@
     const relative = state.sheets.find((sheet) => sheet.id === state.activeSheetId)?.relative
       || state.activeFile
       || "";
-    const changed = Boolean(relative) && Boolean(window.ProtoViewGit?.isChanged?.(relative));
+    const changed = Boolean(relative) && Boolean(window.OceanViewGit?.isChanged?.(relative));
     btn.classList.toggle("hidden", !changed);
   }
 
@@ -531,7 +531,7 @@
 
   /** 从 app.js 的全局搜索数据源取 proto / 代码符号，命中后转成首页条目 */
   function collectProtoAndCodeHits(query) {
-    const api = window.ProtoViewSearch;
+    const api = window.OceanViewSearch;
     if (!api) return [];
     let items = [];
     try {
@@ -568,12 +568,12 @@
       if (seq !== state.searchSeq) return;
       pendingHomeExcel = true;
       if (!post("excelSearch", { query }) && state.homeProtoHits.length) pendingHomeExcel = false;
-      window.ProtoViewDocs?.search?.(query, (hits) => {
+      window.OceanViewDocs?.search?.(query, (hits) => {
         if (seq !== state.searchSeq) return;
         state.homeDocsHits = Array.isArray(hits) ? hits : [];
         renderHomeHits(state.homeProtoHits, state.homeExcelHits);
       });
-      window.ProtoViewDb?.search?.(query, (hits) => {
+      window.OceanViewDb?.search?.(query, (hits) => {
         if (seq !== state.searchSeq) return;
         state.homeDbHits = Array.isArray(hits) ? hits : [];
         renderHomeHits(state.homeProtoHits, state.homeExcelHits);
@@ -647,7 +647,7 @@
   /** 首页点击 proto 结果：接口/枚举定位左侧定义，函数/常量跳源码 */
   function openProtoHit(item) {
     setView("client");
-    const api = window.ProtoViewSearch;
+    const api = window.OceanViewSearch;
     try {
       api?.openItem?.(item);
     } catch {
@@ -734,12 +734,12 @@
       }
       if (kind === "docs") {
         const hit = state.homeDocsHits[index];
-        if (hit) window.ProtoViewDocs?.open?.(hit.id, hit.line || 1);
+        if (hit) window.OceanViewDocs?.open?.(hit.id, hit.line || 1);
         return;
       }
       if (kind === "db") {
         const hit = state.homeDbHits[index];
-        if (hit) window.ProtoViewDb?.openTable?.(hit.id);
+        if (hit) window.OceanViewDb?.openTable?.(hit.id);
         return;
       }
       const item = state.homeProtoHits[index];
@@ -850,9 +850,9 @@
 
     $("excelReload")?.addEventListener("click", () => {
       ensureExcelCatalog(true);
-      try { window.ProtoViewDocs?.reload?.(); } catch { /* ignore */ }
-      try { window.ProtoViewDb?.reload?.(); } catch { /* ignore */ }
-      try { window.ProtoViewSearch?.reloadSymbols?.(); } catch { /* ignore */ }
+      try { window.OceanViewDocs?.reload?.(); } catch { /* ignore */ }
+      try { window.OceanViewDb?.reload?.(); } catch { /* ignore */ }
+      try { window.OceanViewSearch?.reloadSymbols?.(); } catch { /* ignore */ }
     });
 
     // Tab Tab 打开首页（输入框内不劫持）
@@ -879,7 +879,7 @@
     }, true);
   }
 
-  window.ProtoViewHome = {
+  window.OceanViewHome = {
     /** 供 Tab 搜索的 Excel 分类使用 */
     searchExcel(query, onHits) {
       pendingSearch = typeof onHits === "function" ? onHits : null;
@@ -910,9 +910,9 @@
             located = true;
           }
         } else if (name === "docs") {
-          located = Boolean(window.ProtoViewDocs?.openByName?.(target));
+          located = Boolean(window.OceanViewDocs?.openByName?.(target));
         } else if (name === "db") {
-          located = Boolean(window.ProtoViewDb?.openTableByName?.(base.replace(/\.[^.]+$/, "")));
+          located = Boolean(window.OceanViewDb?.openTableByName?.(base.replace(/\.[^.]+$/, "")));
         }
         // 目录还在扫描时重试几次，避免「一直扫描中」后什么都不选中
         if (!located && attempts < 12) window.setTimeout(tryLocate, 400);
@@ -937,8 +937,8 @@
 
   // ===== Excel/Docs/Db 侧栏：折叠 + 拖拽 + 分页 =====
   const SIDE_KEYS = { excel: "excelView", docs: "docsClient", db: "dbView" };
-  const SIDE_WIDTH_KEY = "protoview.view.sideWidth";
-  const SIDE_COLLAPSE_KEY = "protoview.view.sideCollapsed";
+  const SIDE_WIDTH_KEY = "oceanview.view.sideWidth";
+  const SIDE_COLLAPSE_KEY = "oceanview.view.sideCollapsed";
 
   function readSideWidth() {
     const value = Number(localStorage.getItem(SIDE_WIDTH_KEY));
@@ -1043,7 +1043,7 @@
     };
   }
 
-  window.ProtoViewPager = { paginate, renderPager };
+  window.OceanViewPager = { paginate, renderPager };
 
   initSides();
 
@@ -1057,6 +1057,6 @@
   bind();
   renderTabs();
   document.body.dataset.view = "client";
-  // app.js 先于本文件初始化，那时 ProtoViewGit 还不存在，这里补一次 git 变更请求
+  // app.js 先于本文件初始化，那时 OceanViewGit 还不存在，这里补一次 git 变更请求
   requestGitChanges();
 })();

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * ProtoView DBX Sidecar — JSON-RPC 2.0 over stdio (JSONL).
+ * OceanView DBX Sidecar — JSON-RPC 2.0 over stdio (JSONL).
  * stdout = protocol only; logs go to stderr.
  */
 "use strict";
@@ -9,8 +9,8 @@ const fs = require("fs");
 const path = require("path");
 const readline = require("readline");
 
-const PLUGIN_ID = "io.github.zhhoceanfly.protoview";
-const PLUGIN_VERSION = "0.1.6";
+const PLUGIN_ID = "io.github.zhhoceanfly.oceanview";
+const PLUGIN_VERSION = "0.1.1";
 
 const coreDir = path.join(__dirname, "core");
 const { ClientHost } = require(path.join(coreDir, "hostCore.js"));
@@ -18,7 +18,7 @@ const { materializeProtoUpload, materializeGhzUpload } = require("./uploadProtoD
 
 const dataDir = process.env.DBX_PLUGIN_DATA_DIR
   ? path.resolve(process.env.DBX_PLUGIN_DATA_DIR)
-  : path.join(require("os").tmpdir(), "protoview-dbx-data");
+  : path.join(require("os").tmpdir(), "oceanview-dbx-data");
 
 try {
   fs.mkdirSync(dataDir, { recursive: true });
@@ -43,7 +43,7 @@ const host = new ClientHost({
 let writeQueue = Promise.resolve();
 
 function log(line) {
-  process.stderr.write(`[protoview-dbx] ${line}\n`);
+  process.stderr.write(`[oceanview-dbx] ${line}\n`);
 }
 
 function writeLine(obj) {

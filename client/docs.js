@@ -24,7 +24,7 @@
   let searchWaiters = [];
 
   function post(type, payload) {
-    const send = window.ProtoViewHost?.post;
+    const send = window.OceanViewHost?.post;
     if (typeof send === "function") {
       send(type, payload);
       return true;
@@ -70,9 +70,9 @@
     const list = $("docsList");
     if (!list) return;
     const q = state.filter.trim().toLowerCase();
-    const changeOnly = window.ProtoViewGit?.changeOnly?.("docsChangeOnly");
+    const changeOnly = window.OceanViewGit?.changeOnly?.("docsChangeOnly");
     const items = state.docs.filter((doc) => {
-      if (changeOnly && !window.ProtoViewGit?.isChanged?.(doc.relative)) return false;
+      if (changeOnly && !window.OceanViewGit?.isChanged?.(doc.relative)) return false;
       return !q || `${doc.title} ${doc.relative} ${doc.fileName}`.toLowerCase().includes(q);
     });
     if (!items.length) {
@@ -81,10 +81,10 @@
         ? "当前变更里没有文档"
         : (state.docs.length ? "没有匹配的文档" : `未找到 Markdown / docs ${where}`);
       list.innerHTML = `<div class="excel-empty">${empty}</div>`;
-      window.ProtoViewPager?.renderPager?.($("docsPager"), { page: 0, pages: 1, total: 0 }, () => {});
+      window.OceanViewPager?.renderPager?.($("docsPager"), { page: 0, pages: 1, total: 0 }, () => {});
       return;
     }
-    const pager = window.ProtoViewPager;
+    const pager = window.OceanViewPager;
     const result = pager ? pager.paginate(items, state.page, state.pageSize) : { slice: items, page: 0, pages: 1, total: items.length };
     state.page = result.page;
     const groups = new Map();
@@ -325,8 +325,8 @@
   }
 
   function ensureTab() {
-    window.ProtoViewHome?.openTab?.("docs", "DocsView Client");
-    window.ProtoViewHome?.setView?.("docs");
+    window.OceanViewHome?.openTab?.("docs", "DocsView Client");
+    window.OceanViewHome?.setView?.("docs");
   }
 
   function ensure(force = false) {
@@ -341,7 +341,7 @@
     renderList();
   });
   $("docsChangeOnly")?.addEventListener("change", () => {
-    window.ProtoViewGit?.request?.();
+    window.OceanViewGit?.request?.();
     state.page = 0;
     renderList();
   });
@@ -492,7 +492,7 @@
   $("docsJump")?.addEventListener("click", () => {
     const file = state.pageData?.file;
     if (!file) return;
-    window.ProtoViewClient?.openSourceFile?.(file, state.focusLine || 1);
+    window.OceanViewClient?.openSourceFile?.(file, state.focusLine || 1);
   });
   $("docsInput")?.addEventListener("keydown", (event) => {
     const input = $("docsInput");
@@ -544,7 +544,7 @@
     return true;
   }
 
-  window.ProtoViewDocs = {
+  window.OceanViewDocs = {
     ensure: () => ensure(false),
     reload: () => ensure(true),
     rerender: () => renderList(),

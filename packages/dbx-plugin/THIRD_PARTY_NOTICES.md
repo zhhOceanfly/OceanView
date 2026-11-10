@@ -1,8 +1,8 @@
-# Third-party notices (ApiMan DBX runtime)
+# Third-party notices (OceanView DBX runtime)
 
 ## Runtime requirement (Node.js)
 
-The Go launcher (`bin/protoview-dbx`, `host.binary`) resolves `node` / `node.exe`
+The Go launcher (`bin/oceanview-dbx`, `host.binary`) resolves `node` / `node.exe`
 via `PATH` (`exec.LookPath`) and runs `runtime/sidecar.js`. **Node.js ≥ 18 must
 be installed on the host.** If Node is missing or too old, the launcher exits
 non-zero with an actionable install hint (https://nodejs.org/). This package

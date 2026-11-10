@@ -1,6 +1,6 @@
 # Build unsigned DBX plugin candidates (.dbxp)
 # 触发（与 Open VSX / npm 分开，勿共用 tag）：
-#   - Tag：git tag dbx-v0.1.6 && git push origin dbx-v0.1.6
+#   - Tag：git tag dbx-v0.1.1 && git push origin dbx-v0.1.1
 #   - 手动：Actions → Publish DBX plugin candidates → Run workflow
 # 版本以 packages/dbx-plugin/manifest.json 为准。
 name: Publish DBX plugin candidates
@@ -129,7 +129,7 @@ jobs:
               raise SystemExit("no .dbxp files")
 
           man = json.loads(Path("packages/dbx-plugin/manifest.json").read_text(encoding="utf-8"))
-          plugin_id = man.get("id") or "io.github.zhhoceanfly.protoview"
+          plugin_id = man.get("id") or "io.github.zhhoceanfly.oceanview"
           publisher = man.get("publisher") or "zhhoceanfly"
           version = man.get("version")
           if not version:
@@ -176,7 +176,7 @@ jobs:
               "id": plugin_id,
               "publisher": publisher,
               "version": version,
-              "name": man.get("name") or "ApiMan",
+              "name": man.get("name") or "OceanView",
               "description": man.get("description") or "",
           }
           perms = man.get("permissions") or []

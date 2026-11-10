@@ -29,7 +29,7 @@ export type HostSend = (message: Record<string, unknown>) => void;
 export type HostLog = (line: string) => void;
 
 export interface ClientHostOptions {
-  /** Directory used for workspace .proto scan and .protoview/envs */
+  /** Directory used for workspace .proto scan and .oceanview/envs */
   workspaceRoot: string;
   showGoogle?: boolean;
   initialSource?: Partial<ProtoSourceConfig>;
@@ -407,7 +407,7 @@ export function defaultSourceConfig(): ProtoSourceConfig {
 }
 
 export async function loadEnvFileAt(root: string): Promise<ClientEnvFile> {
-  const file = path.join(root, ".protoview", "environments.json");
+  const file = path.join(root, ".oceanview", "environments.json");
   try {
     const text = await fs.readFile(file, "utf8");
     const data = JSON.parse(text) as ClientEnvFile;
@@ -422,7 +422,7 @@ export async function loadEnvFileAt(root: string): Promise<ClientEnvFile> {
 }
 
 export async function saveEnvFileAt(root: string, data: ClientEnvFile): Promise<void> {
-  const dir = path.join(root, ".protoview");
+  const dir = path.join(root, ".oceanview");
   const file = path.join(dir, "environments.json");
   await fs.mkdir(dir, { recursive: true });
   await fs.writeFile(file, `${JSON.stringify({ envs: data.envs }, null, 2)}\n`, "utf8");
@@ -439,7 +439,7 @@ function isValidTemplateId(raw: unknown): raw is string {
 export async function handleTemplates(root: string, type: string, id: string, payload: unknown, send: HostSend): Promise<void> {
   try {
     if (!root) throw new Error("请先打开工作区");
-    const dir = path.join(root, ".protoview", "templates");
+    const dir = path.join(root, ".oceanview", "templates");
     if (type !== "loadTemplates") {
       const template = payload as { id?: unknown; name?: unknown } | undefined;
       if (!isValidTemplateId(template?.id)) throw new Error("模板 ID 无效");

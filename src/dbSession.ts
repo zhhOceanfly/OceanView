@@ -53,7 +53,7 @@ export async function loadDbEnvs(root: string): Promise<DbEnvFile> {
 export async function saveDbEnvs(root: string, fileData: DbEnvFile): Promise<DbEnvFile> {
   const envs = (fileData.envs || []).map(normalizeEnv).filter((item) => item.id && item.name);
   const next = envs.length ? { envs } : defaultDbEnvs();
-  const dir = path.join(path.resolve(root || ""), ".protoview");
+  const dir = path.join(path.resolve(root || ""), ".oceanview");
   await fs.mkdir(dir, { recursive: true });
   // 只存环境定义：activeId、当前选的库都不落盘，避免每次切表都弄脏 db-envs.json
   const serialized = {
@@ -591,7 +591,7 @@ function normalizeEnv(raw: Partial<DbEnv>): DbEnv {
 }
 
 function envFile(root: string): string {
-  return path.join(path.resolve(root || ""), ".protoview", "db-envs.json");
+  return path.join(path.resolve(root || ""), ".oceanview", "db-envs.json");
 }
 
 function resultAffected(result: unknown): number {

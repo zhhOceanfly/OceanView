@@ -3,7 +3,7 @@ export function renderAiPage(canBack: boolean, qrUrl: string): string {
   return `<div class="page ai-page" id="ai-root" data-qr="${esc(qrUrl)}">
     <div class="top">
       <div>
-        <div class="crumbs"><span>ProtoView</span><span class="sep">/</span><span>AI</span></div>
+        <div class="crumbs"><span>OceanView</span><span class="sep">/</span><span>AI</span></div>
         <h1>山海<span class="ai-heart-inline">♥</span></h1>
         <p class="ai-poem">所爱隔山海，山海亦可平<br/>消耗了 token，贡献点爱心<br/>尊重每个热爱开发的程序员</p>
       </div>

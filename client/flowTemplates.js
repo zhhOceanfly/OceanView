@@ -1,7 +1,7 @@
 /**
  * 内置链路模板（画布收藏）
  * - requiresRpc：当前工程的接口里存在这个方法名时才显示该模板
- * - data：与「导出」生成的 protoview-flow JSON 同结构
+ * - data：与「导出」生成的 oceanview-flow JSON 同结构
  */
 (() => {
   const templates = [
@@ -11,7 +11,7 @@
       requiresRpc: "ReqDuplexPlayerEvent",
       data: {
         version: 1,
-        kind: "protoview.flow",
+        kind: "oceanview.flow",
         nodes: [
           {
             id: "n_mvri57vf_f4jiw",
@@ -205,5 +205,5 @@
     },
   ];
 
-  window.ProtoViewFlowTemplates = templates;
+  window.OceanViewFlowTemplates = templates;
 })();

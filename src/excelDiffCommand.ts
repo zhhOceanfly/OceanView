@@ -12,7 +12,7 @@ import { diffWorkbook, diffWorkbookByUris, DiffUri, WorkbookDiff } from "./excel
  *    这里额外提供「ExcelView 差异对比」标签页，用一张 HTML 表同时呈现左右，
  *    变化的单元格高亮，读不到时给出明确提示。
  */
-const SCHEME = "protoview-excel-diff";
+const SCHEME = "oceanview-excel-diff";
 
 class ExcelDiffContentProvider implements vscode.TextDocumentContentProvider {
   private readonly store = new Map<string, string>();
@@ -38,7 +38,7 @@ export function registerExcelDiff(context: vscode.ExtensionContext): void {
   provider = new ExcelDiffContentProvider();
   context.subscriptions.push(
     vscode.workspace.registerTextDocumentContentProvider(SCHEME, provider),
-    vscode.commands.registerCommand("protoview.excelDiff", async (arg?: unknown) => {
+    vscode.commands.registerCommand("oceanview.excelDiff", async (arg?: unknown) => {
       const file = resolveTargetFile(arg);
       if (!file) {
         void vscode.window.showWarningMessage("请选择一个 Excel 文件（或在 Source Control 里右键该文件）。");
@@ -47,11 +47,11 @@ export function registerExcelDiff(context: vscode.ExtensionContext): void {
       await showExcelDiff(file);
     }),
     // Git 侧的「比较」：直接传入左右两个 URI，不依赖目录扫描
-    vscode.commands.registerCommand("protoview.excelDiffUris", async (left?: vscode.Uri, right?: vscode.Uri) => {
+    vscode.commands.registerCommand("oceanview.excelDiffUris", async (left?: vscode.Uri, right?: vscode.Uri) => {
       await showExcelDiffByUris(left, right);
     }),
     // 从 git: 历史版本 URI 自动找到工作区版本，再左右对比
-    vscode.commands.registerCommand("protoview.excelDiffGit", async (uri?: vscode.Uri) => {
+    vscode.commands.registerCommand("oceanview.excelDiffGit", async (uri?: vscode.Uri) => {
       if (!uri || uri.scheme === "file") return;
       const working = vscode.Uri.file(uri.fsPath);
       await showExcelDiffByUris(uri, working);
@@ -284,7 +284,7 @@ async function openDiffTab(diff: WorkbookDiff, name: string, column?: vscode.Vie
     diffPanel = undefined;
   }
   diffPanel = vscode.window.createWebviewPanel(
-    "protoview.excelDiffView",
+    "oceanview.excelDiffView",
     title,
     target,
     { enableScripts: true, retainContextWhenHidden: true },

@@ -58,10 +58,10 @@ export async function startServer(options: ServerOptions): Promise<void> {
     initialSource: options.gitUrl
       ? { mode: "git", gitUrl: options.gitUrl, gitBranch: options.gitBranch || "main" }
       : { mode: "workspace" },
-    log: (line) => console.log(`[protoview] ${line}`),
+    log: (line) => console.log(`[oceanview] ${line}`),
   });
 
-  console.log(`[protoview] loading protos from ${options.gitUrl || options.workspaceRoot} …`);
+  console.log(`[oceanview] loading protos from ${options.gitUrl || options.workspaceRoot} …`);
   await host.reload(Boolean(options.gitUrl));
 
   const server = http.createServer((req, res) => {
@@ -128,9 +128,9 @@ export async function startServer(options: ServerOptions): Promise<void> {
   });
 
   const url = `http://127.0.0.1:${options.port}/`;
-  console.log(`[protoview] ProtoView Client → ${url}`);
-  console.log(`[protoview] source: ${host.sourceLabel()}`);
-  console.log("[protoview] press Ctrl+C to stop");
+  console.log(`[oceanview] ProtoView Client → ${url}`);
+  console.log(`[oceanview] source: ${host.sourceLabel()}`);
+  console.log("[oceanview] press Ctrl+C to stop");
 
   if (options.openBrowser) openUrl(url);
 }
@@ -167,6 +167,6 @@ function openUrl(url: string): void {
       : platform === "darwin" ? `open "${url}"`
         : `xdg-open "${url}"`;
   exec(cmd, (error) => {
-    if (error) console.warn(`[protoview] could not open browser: ${error.message}`);
+    if (error) console.warn(`[oceanview] could not open browser: ${error.message}`);
   });
 }

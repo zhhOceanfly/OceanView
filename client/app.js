@@ -2,24 +2,17 @@
   ensureLocalStorageShim();
   const isVsCodeWebview = typeof acquireVsCodeApi === "function";
   const isDbxWorkbench = typeof window !== "undefined" && !!window.dbxPlugin;
-  if (isDbxWorkbench) {
-    document.title = "ApiMan";
-    const brand = document.querySelector(".brand");
-    if (brand) brand.innerHTML = "Api<span>Man</span>";
-    const crumb = document.querySelector(".doc-crumbs span");
-    if (crumb && crumb.textContent === "ProtoView") crumb.textContent = "ApiMan";
-  }
   const vscode = isVsCodeWebview
     ? acquireVsCodeApi()
     : isDbxWorkbench
       ? createDbxBridge()
       : createWsBridge();
-  const THEME_KEY = "protoview.client.theme";
+  const THEME_KEY = "oceanview.client.theme";
   const SIDEBAR_BREAKPOINT = 960;
-  const SIDEBAR_WIDTH_KEY = "protoview.client.sidebarWidth";
-  const DRAFT_KEY = "protoview.client.drafts";
-  const HISTORY_KEY = "protoview.client.history";
-  const SPLIT_KEY = "protoview.client.split";
+  const SIDEBAR_WIDTH_KEY = "oceanview.client.sidebarWidth";
+  const DRAFT_KEY = "oceanview.client.drafts";
+  const HISTORY_KEY = "oceanview.client.history";
+  const SPLIT_KEY = "oceanview.client.split";
   /** null=跟宽度走；true/false=手动覆盖（窗口跨过断点后清除） */
   let sidebarManual = null;
   let sidebarWasNarrow = null;
@@ -27,7 +20,7 @@
   /** DBX opaque-origin sandboxes reject localStorage; keep an in-memory shim. */
   function ensureLocalStorageShim() {
     try {
-      const k = "__protoview_ls_probe__";
+      const k = "__oceanview_ls_probe__";
       window.localStorage.setItem(k, "1");
       window.localStorage.removeItem(k);
       return;
@@ -501,7 +494,7 @@
     const app = $("app");
     const grip = $("sourceDrawerGrip");
     if (!app || !grip) return;
-    const saved = Number(localStorage.getItem("protoview.source.w"));
+    const saved = Number(localStorage.getItem("oceanview.source.w"));
     if (Number.isFinite(saved) && saved >= 320) app.style.setProperty("--source-size", `${Math.round(saved)}px`);
     const setWidth = (clientX) => {
       const rect = app.getBoundingClientRect();
@@ -526,7 +519,7 @@
       dragging = false;
       app.classList.remove("source-resizing");
       const width = Math.round(Number.parseFloat(app.style.getPropertyValue("--source-size")) || 0);
-      if (width >= 320) localStorage.setItem("protoview.source.w", String(width));
+      if (width >= 320) localStorage.setItem("oceanview.source.w", String(width));
     };
     grip.addEventListener("pointerup", finish);
     grip.addEventListener("pointercancel", finish);
@@ -668,7 +661,7 @@
 
   /** VS Code webview 里 window.confirm 常被禁用，统一走自建对话框 */
   function showConfirm(message) {
-    const builtin = window.ProtoViewDialog?.confirm;
+    const builtin = window.OceanViewDialog?.confirm;
     if (typeof builtin === "function") return builtin(message);
     return Promise.resolve(window.confirm(message));
   }
@@ -686,7 +679,7 @@
 
   function renderTree() {
     const query = (els.filter.value || "").trim().toLowerCase();
-    const changeOnly = window.ProtoViewGit?.changeOnly?.("rpcChangeOnly");
+    const changeOnly = window.OceanViewGit?.changeOnly?.("rpcChangeOnly");
     const packs = state.catalog.packages || [];
     if (!packs.length) {
       els.tree.innerHTML = `<div class="empty-side">还没有接口数据。点击刷新，或确认 Proto 来源已解析成功。</div>`;
@@ -798,7 +791,7 @@
 
   function fileChanged(path) {
     if (!path) return false;
-    return Boolean(window.ProtoViewGit?.isChanged?.(path));
+    return Boolean(window.OceanViewGit?.isChanged?.(path));
   }
 
   function typeChanged(item) {
@@ -1526,18 +1519,18 @@
     }
   }
 
-  let activeEnvStorageKey = "protoview.client.activeEnvId";
+  let activeEnvStorageKey = "oceanview.client.activeEnvId";
 
   function persistEnvs() {
     try { localStorage.setItem(activeEnvStorageKey, state.activeEnvId); } catch { /* ignore */ }
     const payload = { envs: state.envs };
     if (vscode) vscode.postMessage({ type: "saveEnvs", payload });
-    else localStorage.setItem("protoview.client.envs", JSON.stringify(payload));
+    else localStorage.setItem("oceanview.client.envs", JSON.stringify(payload));
   }
 
   function loadLocalEnvs() {
     try {
-      const raw = localStorage.getItem("protoview.client.envs");
+      const raw = localStorage.getItem("oceanview.client.envs");
       if (!raw) return;
       const data = JSON.parse(raw);
       if (Array.isArray(data.envs) && data.envs.length) {
@@ -1552,7 +1545,7 @@
   function applyBootstrap(data) {
     const prevSelected = state.selected?.id;
     if (data.catalog) state.catalog = data.catalog;
-    activeEnvStorageKey = `protoview.client.activeEnvId:${data.workspaceKey || "default"}`;
+    activeEnvStorageKey = `oceanview.client.activeEnvId:${data.workspaceKey || "default"}`;
     if (data.envs && Array.isArray(data.envs.envs) && data.envs.envs.length) {
       state.envs = data.envs.envs;
       let savedId = "";
@@ -1570,7 +1563,7 @@
         lastError: data.source.lastError || "",
       };
     }
-    els.sourceMeta.textContent = state.catalog.sourceLabel || (isDbxWorkbench ? "ApiMan" : "ProtoView Client");
+    els.sourceMeta.textContent = state.catalog.sourceLabel || (isDbxWorkbench ? "OceanView" : "ProtoView Client");
     if (data.qr) state.qr = data.qr;
     renderEnvSelect();
     renderTree();
@@ -1598,7 +1591,7 @@
     return btoa(binary);
   }
 
-  const OPEN_WITH_KEY = "protoview.client.openWith";
+  const OPEN_WITH_KEY = "oceanview.client.openWith";
 
   function getOpenWithTarget() {
     const el = $("openWithSelect");
@@ -2027,7 +2020,7 @@
       els.sourceMeta.textContent = mode === "git"
         ? `Git · ${gitBranch} · ${gitUrl}`
         : `目录 · ${dirPath}`;
-      setRespBadge("wait", "未连接宿主：请用扩展打开 Client，或运行 npx @zhhoceanfly/protoview");
+      setRespBadge("wait", "未连接宿主：请用扩展打开 Client，或运行 npx @zhhoceanfly/oceanview");
       return;
     }
     setRespBadge("wait", mode === "git" ? "正在应用 Git 来源…" : "正在加载目录…");
@@ -2326,7 +2319,7 @@
   });
   els.filter.addEventListener("input", renderTree);
   $("rpcChangeOnly")?.addEventListener("change", () => {
-    window.ProtoViewGit?.request?.();
+    window.OceanViewGit?.request?.();
     renderTree();
   });
   els.envSelect.addEventListener("change", () => applyEnvId(els.envSelect.value));
@@ -2405,8 +2398,8 @@
     if (link) openType(link.getAttribute("data-type"));
   });
   els.tree.addEventListener("click", (event) => {
-    if (window.__protoviewFlowDragged) {
-      window.__protoviewFlowDragged = false;
+    if (window.__oceanviewFlowDragged) {
+      window.__oceanviewFlowDragged = false;
       return;
     }
     const toggle = event.target.closest("[data-toggle]");
@@ -2439,15 +2432,15 @@
   }
   function placeFlowRpc(rpcId, label, clientX, clientY) {
     if (!rpcId) return;
-    if (window.ProtoViewFlow?.addAtScreen && Number.isFinite(clientX) && Number.isFinite(clientY)) {
-      window.ProtoViewFlow.addAtScreen(rpcId, clientX, clientY, label);
+    if (window.OceanViewFlow?.addAtScreen && Number.isFinite(clientX) && Number.isFinite(clientY)) {
+      window.OceanViewFlow.addAtScreen(rpcId, clientX, clientY, label);
       return;
     }
-    if (window.ProtoViewFlow?.addNode) {
-      window.ProtoViewFlow.addNode(rpcId, undefined, undefined, label);
+    if (window.OceanViewFlow?.addNode) {
+      window.OceanViewFlow.addNode(rpcId, undefined, undefined, label);
       return;
     }
-    window.dispatchEvent(new CustomEvent("protoview-flow-add", {
+    window.dispatchEvent(new CustomEvent("oceanview-flow-add", {
       detail: { rpcId, label, clientX, clientY },
     }));
   }
@@ -2488,7 +2481,7 @@
     document.getElementById("flowStage")?.classList.remove("drop-target");
     if (drag.ghost) drag.ghost.remove();
     if (!drag.active) return;
-    window.__protoviewFlowDragged = true;
+    window.__oceanviewFlowDragged = true;
     const stage = document.getElementById("flowStage");
     if (!stage) return;
     const rect = stage.getBoundingClientRect();
@@ -2531,7 +2524,7 @@
     const item = state.history[Number(row.getAttribute("data-history-index"))];
     if (!item) return;
     showHistoryEntry(state.history.indexOf(item), { activate: false });
-    const flowApi = window.ProtoViewFlow;
+    const flowApi = window.OceanViewFlow;
     if (!flowApi?.isFlowOpen?.()) return;
     const nodeId = item.nodeId || flowApi.nodeIdForRpc?.(item.rpcId || state.selected?.id);
     if (nodeId) flowApi.openInspect?.(nodeId, { tab: "history" });
@@ -2914,7 +2907,7 @@
   });
   $("ghzConcurrency").addEventListener("change", refreshGhzCommand);
   $("ghzTotal").addEventListener("change", refreshGhzCommand);
-  const GHZ_PATH_KEY = "protoview.client.ghzPath";
+  const GHZ_PATH_KEY = "oceanview.client.ghzPath";
   try { $("ghzPath").value = localStorage.getItem(GHZ_PATH_KEY) || ""; } catch { /* ignore */ }
   function setGhzPath(value) {
     const path = String(value || "").trim();
@@ -3112,13 +3105,13 @@
     if (!data) return;
     if (data.type === "streamData" || data.type === "streamEnded") {
       try {
-        window.ProtoViewFlow?.onHostStreamEvent?.(data);
+        window.OceanViewFlow?.onHostStreamEvent?.(data);
       } catch { /* ignore */ }
     }
   });
 
   // 首页复用同一套全类型搜索
-  window.ProtoViewSearch = {
+  window.OceanViewSearch = {
     /** 返回与 Tab 搜索一致的条目（接口/枚举/函数/常量） */
     searchAll(query) {
       const q = String(query || "").trim();
@@ -3170,7 +3163,7 @@
   };
 
   // home.js 复用同一套宿主通信
-  window.ProtoViewHost = {
+  window.OceanViewHost = {
     post(type, payload) {
       if (!vscode) return false;
       vscode.postMessage({ type, ...(payload === undefined ? {} : { payload }) });
@@ -3179,7 +3172,7 @@
     isHost: () => Boolean(vscode),
   };
 
-  window.ProtoViewClient = {
+  window.OceanViewClient = {
     rerenderTree: () => renderTree(),
     notify: (message) => { setRespBadge("", String(message || "")); },
     findRpc,
@@ -3321,7 +3314,7 @@
       const name = String(info.name || "");
       if (!name) return false;
       // 定义浮层开着时先收起，避免两个右侧面板打架
-      try { window.ProtoViewFlow?.closeInspect?.(); } catch { /* ignore */ }
+      try { window.OceanViewFlow?.closeInspect?.(); } catch { /* ignore */ }
       showCallGraphPreview({ title: name, file: String(info.file || ""), line: Number(info.line) || 1 });
       return true;
     },
@@ -3357,7 +3350,7 @@
     if (data.type === "openClientView") {
       const view = String(data.payload?.view || "client");
       const target = String(data.payload?.target || "");
-      window.ProtoViewHome?.openTargetView?.(view, target);
+      window.OceanViewHome?.openTargetView?.(view, target);
     }
     if (data.type === "codeSymbols") applyCodeSymbols(data);
     if (data.type === "callGraph") renderCallGraph(data.payload);
@@ -3808,7 +3801,7 @@
     }
     if (globalSearch.excelLoaded && globalSearch.excelQuery === query) return;
     globalSearch.excelQuery = query;
-    window.ProtoViewHome?.searchExcel?.(query, (hits) => {
+    window.OceanViewHome?.searchExcel?.(query, (hits) => {
       globalSearch.excelLoaded = true;
       globalSearch.excelHits = (Array.isArray(hits) ? hits : []).map((hit) => {
         const count = Number(hit.count || 0);
@@ -3834,7 +3827,7 @@
     }
     if (globalSearch.docsQuery === query && globalSearch.docsHits.length) return;
     globalSearch.docsQuery = query;
-    window.ProtoViewDocs?.search?.(query, (hits) => {
+    window.OceanViewDocs?.search?.(query, (hits) => {
       globalSearch.docsHits = (Array.isArray(hits) ? hits : []).map((hit) => ({
         kind: "docs",
         title: hit.title || hit.fileName || "",
@@ -3855,7 +3848,7 @@
     }
     if (globalSearch.dbQuery === query && globalSearch.dbHits.length) return;
     globalSearch.dbQuery = query;
-    window.ProtoViewDb?.search?.(query, (hits) => {
+    window.OceanViewDb?.search?.(query, (hits) => {
       globalSearch.dbHits = (Array.isArray(hits) ? hits : []).map((hit) => ({
         kind: "db",
         title: hit.table || "",
@@ -4043,10 +4036,10 @@
     const target = String(tableName || "").trim();
     if (!target) return;
     closeSourceDrawer();
-    const db = window.ProtoViewDb;
+    const db = window.OceanViewDb;
     if (!db?.openTableByName) return;
-    window.ProtoViewHome?.openTab?.("db", "DbView Client");
-    window.ProtoViewHome?.setView?.("db");
+    window.OceanViewHome?.openTab?.("db", "DbView Client");
+    window.OceanViewHome?.setView?.("db");
     // 等视图切换后再定位，避免 setView 的 ensure 覆盖选中态
     requestAnimationFrame(() => db.openTableByName(target));
   }
@@ -4056,7 +4049,7 @@
     const sheetId = String(item?.sheetId || "");
     if (!sheetId) return;
     closeGlobalSearch();
-    window.ProtoViewHome?.openSheet?.(sheetId, Number(item.row) || 0);
+    window.OceanViewHome?.openSheet?.(sheetId, Number(item.row) || 0);
   }
 
   function applyGlobalSearchItem(item) {
@@ -4068,12 +4061,12 @@
     }
     if (item.kind === "docs") {
       closeGlobalSearch();
-      window.ProtoViewDocs?.open?.(item.docId, item.line || 1);
+      window.OceanViewDocs?.open?.(item.docId, item.line || 1);
       return;
     }
     if (item.kind === "db") {
       closeGlobalSearch();
-      window.ProtoViewDb?.openTable?.(item.tableId);
+      window.OceanViewDb?.openTable?.(item.tableId);
       return;
     }
     // 接口 / 枚举：回车跳到左侧定义
@@ -4250,7 +4243,7 @@
 
   if (!vscode) {
     loadLocalEnvs();
-    if (window.__PROTOVIEW_BOOTSTRAP__) applyBootstrap(window.__PROTOVIEW_BOOTSTRAP__);
+    if (window.__OCEANVIEW_BOOTSTRAP__) applyBootstrap(window.__OCEANVIEW_BOOTSTRAP__);
     else {
       renderEnvSelect();
       renderTree();

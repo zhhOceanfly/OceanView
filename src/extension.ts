@@ -22,7 +22,7 @@ let catalog: Catalog | undefined;
 let sourceConfig: ProtoSourceConfig;
 let extensionContext: vscode.ExtensionContext;
 let clientPanel: ClientPanel;
-const output = vscode.window.createOutputChannel("ProtoView");
+const output = vscode.window.createOutputChannel("OceanView");
 
 export function activate(context: vscode.ExtensionContext): void {
   extensionContext = context;
@@ -60,7 +60,7 @@ export function activate(context: vscode.ExtensionContext): void {
     await saveSourceConfig(extensionContext, sourceConfig);
     await reload(tree, panel, status, next.mode === "git");
   });
-  const view = vscode.window.createTreeView("protoview.explorer", {
+  const view = vscode.window.createTreeView("oceanview.explorer", {
     treeDataProvider: tree,
     showCollapseAll: true,
   });
@@ -70,29 +70,29 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
-  status.command = "protoview.explorer.focus";
+  status.command = "oceanview.explorer.focus";
   status.show();
 
   context.subscriptions.push(
     view,
     output,
     status,
-    vscode.commands.registerCommand("protoview.show", (id?: string) => {
+    vscode.commands.registerCommand("oceanview.show", (id?: string) => {
       if (!catalog) return;
       panel.show(catalog, id || "home");
     }),
-    vscode.commands.registerCommand("protoview.openSource", (node?: ProtoNode) => {
+    vscode.commands.registerCommand("oceanview.openSource", (node?: ProtoNode) => {
       const target = node?.source ?? view.selection[0]?.source;
       if (target) void openSource(target.file, target.line);
     }),
-    vscode.commands.registerCommand("protoview.refresh", () => void reload(tree, panel, status, true)),
-    vscode.commands.registerCommand("protoview.toggleSourceMode", () => void toggleSourceMode(tree, panel, status)),
-    vscode.commands.registerCommand("protoview.editGitUrl", () => void editGitUrl(tree, panel, status)),
-    vscode.commands.registerCommand("protoview.editGitBranch", () => void editGitBranch(tree, panel, status)),
-    vscode.commands.registerCommand("protoview.syncGitSource", () => void reload(tree, panel, status, true)),
-    vscode.commands.registerCommand("protoview.showGitLog", () => showGitLog()),
-    vscode.commands.registerCommand("protoview.openGitTemp", () => void openGitTemp()),
-    vscode.commands.registerCommand("protoview.openClient", () => {
+    vscode.commands.registerCommand("oceanview.refresh", () => void reload(tree, panel, status, true)),
+    vscode.commands.registerCommand("oceanview.toggleSourceMode", () => void toggleSourceMode(tree, panel, status)),
+    vscode.commands.registerCommand("oceanview.editGitUrl", () => void editGitUrl(tree, panel, status)),
+    vscode.commands.registerCommand("oceanview.editGitBranch", () => void editGitBranch(tree, panel, status)),
+    vscode.commands.registerCommand("oceanview.syncGitSource", () => void reload(tree, panel, status, true)),
+    vscode.commands.registerCommand("oceanview.showGitLog", () => showGitLog()),
+    vscode.commands.registerCommand("oceanview.openGitTemp", () => void openGitTemp()),
+    vscode.commands.registerCommand("oceanview.openClient", () => {
       if (!catalog) {
         void vscode.window.showWarningMessage("请先完成 Proto 解析，再打开 ProtoView Client。");
         return;
@@ -100,10 +100,10 @@ export function activate(context: vscode.ExtensionContext): void {
       clientPanel.open(catalog, sourceLabel(), showGoogle(), sourceConfig);
     }),
     // 编辑器标题栏快速入口：按当前文件类型直接进对应 View Client
-    vscode.commands.registerCommand("protoview.openProtoView", (arg?: unknown) => openClientAt("client", arg)),
-    vscode.commands.registerCommand("protoview.openExcelView", (arg?: unknown) => openClientAt("excel", arg)),
-    vscode.commands.registerCommand("protoview.openDocsView", (arg?: unknown) => openClientAt("docs", arg)),
-    vscode.commands.registerCommand("protoview.openDbView", (arg?: unknown) => openClientAt("db", arg)),    vscode.commands.registerCommand("protoview.showAtCursor", () => {
+    vscode.commands.registerCommand("oceanview.openProtoView", (arg?: unknown) => openClientAt("client", arg)),
+    vscode.commands.registerCommand("oceanview.openExcelView", (arg?: unknown) => openClientAt("excel", arg)),
+    vscode.commands.registerCommand("oceanview.openDocsView", (arg?: unknown) => openClientAt("docs", arg)),
+    vscode.commands.registerCommand("oceanview.openDbView", (arg?: unknown) => openClientAt("db", arg)),    vscode.commands.registerCommand("oceanview.showAtCursor", () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor || !catalog) return;
       const id = findSymbolAt(catalog, editor.document.uri.fsPath, editor.selection.active.line + 1);
@@ -114,7 +114,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
     vscode.workspace.onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration("protoview.showGoogle")) {
+      if (event.affectsConfiguration("oceanview.showGoogle")) {
         tree.update(catalog, false, showGoogle(), sourceConfig);
       }
     }),
@@ -243,7 +243,7 @@ async function reload(
   syncGit: boolean,
 ): Promise<void> {
   tree.update(catalog, true, showGoogle(), sourceConfig);
-  status.text = "$(sync~spin) ProtoView 加载中";
+  status.text = "$(sync~spin) OceanView 加载中";
 
   try {
     if (sourceConfig.mode === "git") {
@@ -253,7 +253,7 @@ async function reload(
         sourceConfig = await vscode.window.withProgress(
           {
             location: vscode.ProgressLocation.Notification,
-            title: "ProtoView 正在拉取 Git Proto…",
+            title: "OceanView 正在拉取 Git Proto…",
             cancellable: false,
           },
           async () => syncGitSource(sourceConfig, (line) => output.appendLine(line)),
@@ -263,11 +263,11 @@ async function reload(
           catalog = buildCatalog([], [{ file: "git", message: sourceConfig.lastError }]);
           tree.update(catalog, false, showGoogle(), sourceConfig);
           panel.refresh(catalog);
-          status.text = "$(error) ProtoView Git 失败";
+          status.text = "$(error) OceanView Git 失败";
           status.tooltip = `${sourceConfig.lastError}\n临时目录: ${sourceConfig.localPath || sourceCacheDir(sourceConfig.gitUrl)}`;
           const temp = sourceConfig.localPath || sourceCacheDir(sourceConfig.gitUrl);
           const action = await vscode.window.showErrorMessage(
-            `ProtoView 拉取失败：${sourceConfig.lastError}`,
+            `OceanView 拉取失败：${sourceConfig.lastError}`,
             "查看日志",
             "复制临时目录",
           );
@@ -292,9 +292,9 @@ async function reload(
     if (!folders.length) {
       catalog = buildCatalog([], []);
       tree.update(catalog, false, showGoogle(), sourceConfig);
-      status.text = "$(symbol-namespace) ProtoView 未打开文件夹";
+      status.text = "$(symbol-namespace) OceanView 未打开文件夹";
       status.tooltip = "工作区模式下需要打开含 .proto 的文件夹";
-      void vscode.window.showWarningMessage("ProtoView 工作区模式需要先打开文件夹；也可切换到 Git 来源。");
+      void vscode.window.showWarningMessage("OceanView 工作区模式需要先打开文件夹；也可切换到 Git 来源。");
       return;
     }
     await loadFromWorkspace(folders[0].uri.fsPath, tree, panel, status);
@@ -302,7 +302,7 @@ async function reload(
     const message = error instanceof Error ? error.message : String(error);
     catalog = buildCatalog([], [{ file: "reload", message }]);
     tree.update(catalog, false, showGoogle(), sourceConfig);
-    status.text = "$(error) ProtoView 失败";
+    status.text = "$(error) OceanView 失败";
     status.tooltip = message;
     output.appendLine(message);
     output.show(true);
@@ -359,10 +359,10 @@ async function parseEntries(
   clientPanel.refresh(catalog, sourceLabel(), showGoogle(), sourceConfig);
   const visible = catalog.packages.filter((pkg) => showGoogle() || !pkg.wellKnown).length;
   const modeLabel = sourceConfig.mode === "git" ? "Git" : "工作区";
-  status.text = `$(symbol-namespace) ProtoView ${visible}`;
+  status.text = `$(symbol-namespace) OceanView ${visible}`;
   status.tooltip = errors.length
-    ? `${modeLabel} · ${errors.length} 个文件解析失败，见输出 ProtoView`
-    : `${modeLabel} · 打开 ProtoView 侧边栏`;
+    ? `${modeLabel} · ${errors.length} 个文件解析失败，见输出 OceanView`
+    : `${modeLabel} · 打开 OceanView 侧边栏`;
   if (errors.length) output.show(true);
 }
 
@@ -408,7 +408,7 @@ function sourceLabel(): string {
 }
 
 function showGoogle(): boolean {
-  return vscode.workspace.getConfiguration("protoview").get<boolean>("showGoogle") === true;
+  return vscode.workspace.getConfiguration("oceanview").get<boolean>("showGoogle") === true;
 }
 
 /** 编辑器标题栏快速入口：打开 Client 并切到指定视图，带上当前文件用于定位 */

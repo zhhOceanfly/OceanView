@@ -1,17 +1,17 @@
-# @zhhoceanfly/protoview
+# @zhhoceanfly/oceanview
 
-当前版本：**0.1.6**
+当前版本：**0.1.1**
 
 ProtoView Client **CLI**：在浏览器里调试 gRPC / HTTP / SSE / WebSocket。适合 Rider 等无法安装 VS Code 扩展的 IDE。
 
-与 [Open VSX 扩展](https://open-vsx.org/extension/zoceanfly/protoview) 共用同一套 Client 页面与调用逻辑。
+与 [Open VSX 扩展](https://open-vsx.org/extension/zoceanfly/oceanview) 共用同一套 Client 页面与调用逻辑。
 
 ## 安装
 
 ```bash
-npm i -g @zhhoceanfly/protoview
+npm i -g @zhhoceanfly/oceanview
 # 或
-npx @zhhoceanfly/protoview
+npx @zhhoceanfly/oceanview
 ```
 
 需要 **Node.js 18+**。Git 来源需本机已安装 `git`。
@@ -19,15 +19,15 @@ npx @zhhoceanfly/protoview
 ## 用法
 
 ```bash
-protoview                       # 扫描当前目录 .proto，打开浏览器
-protoview --proto ./api         # 指定目录
-protoview --git https://github.com/org/repo.git --branch main
-protoview --port 3920 --no-open
+oceanview                       # 扫描当前目录 .proto，打开浏览器
+oceanview --proto ./api         # 指定目录
+oceanview --git https://github.com/org/repo.git --branch main
+oceanview --port 3920 --no-open
 ```
 
 默认地址：`http://127.0.0.1:3920/`
 
-环境配置保存在工作区目录下的 `.protoview/environments.json`。
+环境配置保存在工作区目录下的 `.oceanview/environments.json`。
 
 ## 自定义 Proto 来源
 
@@ -50,17 +50,17 @@ protoview --port 3920 --no-open
 
 ```bash
 # Windows PowerShell
-$env:PROTOVIEW_EDITOR="cursor"
-protoview --proto ./api
+$env:OCEANVIEW_EDITOR="cursor"
+oceanview --proto ./api
 
 # 或自定义命令模板
-$env:PROTOVIEW_EDITOR="cursor -g {file}:{line}"
-$env:PROTOVIEW_EDITOR="idea --line {line} {file}"
+$env:OCEANVIEW_EDITOR="cursor -g {file}:{line}"
+$env:OCEANVIEW_EDITOR="idea --line {line} {file}"
 ```
 
 ## 仓库内开发
 
-在 ProtoView 仓库根目录：
+在 OceanView 仓库根目录：
 
 ```bash
 npm run dev:cli

@@ -18,7 +18,7 @@ export class ProtoNode extends vscode.TreeItem {
     if (source) this.contextValue = "source";
     if (navId) {
       this.command = {
-        command: "protoview.show",
+        command: "oceanview.show",
         title: "打开",
         arguments: [navId],
       };
@@ -100,7 +100,7 @@ export class ProtoTree implements vscode.TreeDataProvider<ProtoNode> {
     node.iconPath = new vscode.ThemeIcon("window");
     node.description = "接口调试台";
     node.tooltip = "左侧浏览全部 service/接口，右侧配置环境与请求（可独立部署，暂不使用数据库）";
-    node.command = { command: "protoview.openClient", title: "打开 ProtoView Client" };
+    node.command = { command: "oceanview.openClient", title: "打开 ProtoView Client" };
     return node;
   }
 
@@ -137,7 +137,7 @@ export class ProtoTree implements vscode.TreeDataProvider<ProtoNode> {
     mode.parent = root;
     mode.iconPath = new vscode.ThemeIcon(config.mode === "workspace" ? "folder-library" : "git-branch");
     mode.description = "点击切换";
-    mode.command = { command: "protoview.toggleSourceMode", title: "切换来源模式" };
+    mode.command = { command: "oceanview.toggleSourceMode", title: "切换来源模式" };
     root.children.push(mode);
 
     if (config.mode === "git") {
@@ -151,7 +151,7 @@ export class ProtoTree implements vscode.TreeDataProvider<ProtoNode> {
       url.iconPath = new vscode.ThemeIcon("link");
       url.description = config.gitUrl || "点击填写";
       url.tooltip = config.gitUrl || "填写仓库地址，例如 https://github.com/org/repo.git";
-      url.command = { command: "protoview.editGitUrl", title: "编辑 Git 地址" };
+      url.command = { command: "oceanview.editGitUrl", title: "编辑 Git 地址" };
       root.children.push(url);
 
       const branch = new ProtoNode(
@@ -163,7 +163,7 @@ export class ProtoTree implements vscode.TreeDataProvider<ProtoNode> {
       branch.parent = root;
       branch.iconPath = new vscode.ThemeIcon("git-branch");
       branch.description = config.gitBranch || "main";
-      branch.command = { command: "protoview.editGitBranch", title: "编辑分支" };
+      branch.command = { command: "oceanview.editGitBranch", title: "编辑分支" };
       root.children.push(branch);
 
       const tempPath = config.localPath || (config.gitUrl ? sourceCacheDir(config.gitUrl) : "");
@@ -179,7 +179,7 @@ export class ProtoTree implements vscode.TreeDataProvider<ProtoNode> {
       temp.tooltip = tempPath
         ? `${tempPath}\n点击复制路径，并在资源管理器中打开`
         : "同步时会克隆到系统临时目录";
-      temp.command = { command: "protoview.openGitTemp", title: "打开临时目录" };
+      temp.command = { command: "oceanview.openGitTemp", title: "打开临时目录" };
       root.children.push(temp);
 
       const sync = new ProtoNode(
@@ -194,7 +194,7 @@ export class ProtoTree implements vscode.TreeDataProvider<ProtoNode> {
         ? new Date(config.lastSyncedAt).toLocaleString()
         : undefined;
       sync.tooltip = config.lastError || tempPath || "克隆或更新到系统临时目录";
-      sync.command = { command: "protoview.syncGitSource", title: "同步 Git 来源" };
+      sync.command = { command: "oceanview.syncGitSource", title: "同步 Git 来源" };
       root.children.push(sync);
 
       const logs = new ProtoNode(
@@ -206,8 +206,8 @@ export class ProtoTree implements vscode.TreeDataProvider<ProtoNode> {
       logs.parent = root;
       logs.iconPath = new vscode.ThemeIcon(config.lastError ? "warning" : "output");
       logs.description = config.lastLog ? `${config.lastLog.split(/\r?\n/).length} 行` : "暂无";
-      logs.tooltip = config.lastError || "在输出面板 ProtoView 中查看完整 git 日志";
-      logs.command = { command: "protoview.showGitLog", title: "查看拉取日志" };
+      logs.tooltip = config.lastError || "在输出面板 OceanView 中查看完整 git 日志";
+      logs.command = { command: "oceanview.showGitLog", title: "查看拉取日志" };
       root.children.push(logs);
     }
 

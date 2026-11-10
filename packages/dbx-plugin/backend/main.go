@@ -1,4 +1,4 @@
-// ApiMan (ProtoView) DBX sidecar launcher: relay Host stdio to the Node JSON-RPC worker.
+// OceanView DBX sidecar launcher: relay Host stdio to the Node JSON-RPC worker.
 // Requires Node.js >= 18 on PATH at runtime (declared via host.binary).
 package main
 
@@ -39,7 +39,7 @@ func main() {
 }
 
 func fail(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, "[apiman-dbx] "+format+"\n", args...)
+	fmt.Fprintf(os.Stderr, "[oceanview-dbx] "+format+"\n", args...)
 	os.Exit(1)
 }
 
@@ -49,7 +49,7 @@ func ensureNode() (string, error) {
 		return "", fmt.Errorf(
 			"Node.js >= %d is required but was not found on PATH.\n"+
 				"  Install Node.js LTS from https://nodejs.org/ then fully restart DBX.\n"+
-				"  ApiMan's sidecar is a Go launcher that runs runtime/sidecar.js via `node` (host.binary).\n"+
+				"  OceanView's sidecar is a Go launcher that runs runtime/sidecar.js via `node` (host.binary).\n"+
 				"  LookPath error: %v",
 			minNodeMajor, err,
 		)
@@ -132,7 +132,7 @@ func locateSidecarScript() (string, error) {
 		}
 	}
 	return "", fmt.Errorf(
-		"runtime/sidecar.js not found next to %s.\nThe plugin package may be incomplete; reinstall ApiMan from the store or a .dbxp.",
+		"runtime/sidecar.js not found next to %s.\nThe plugin package may be incomplete; reinstall OceanView from the store or a .dbxp.",
 		exe,
 	)
 }

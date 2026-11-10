@@ -118,7 +118,7 @@ export class ClientPanel {
     const clientRoot = vscode.Uri.joinPath(this.extensionUri, "client");
     const mediaRoot = vscode.Uri.joinPath(this.extensionUri, "media");
     this.panel = vscode.window.createWebviewPanel(
-      "protoview.client",
+      "oceanview.client",
       "OceanView",
       { viewColumn: vscode.ViewColumn.Beside, preserveFocus: false },
       {
@@ -972,7 +972,7 @@ export class ClientPanel {
         <button class="icon-btn" id="closeFlowTpl" type="button">✕</button>
       </div>
       <div class="modal-body">
-        <p class="stress-note">模板保存在 .protoview/templates，文件名按名称生成（如 tpl_玩家登录.json），名称不可重复。</p>
+        <p class="stress-note">模板保存在 .oceanview/templates，文件名按名称生成（如 tpl_玩家登录.json），名称不可重复。</p>
         <div class="flow-tpl-save">
           <input id="flowTplName" placeholder="唯一模板名称，如：玩家登录" />
           <button class="btn" id="saveFlowTplBtn" type="button">保存当前画布</button>
@@ -1142,7 +1142,7 @@ export class ClientPanel {
     <div class="ai-page">
       <div class="ai-top">
         <div>
-          <div class="doc-crumbs"><span>ProtoView</span><span>/</span><span>AI</span></div>
+          <div class="doc-crumbs"><span>OceanView</span><span>/</span><span>AI</span></div>
           <h2 class="doc-title">山海<span class="ai-heart">♥</span></h2>
           <p class="ai-poem">所爱隔山海，山海亦可平<br/>消耗了 token，贡献点爱心<br/>尊重每个热爱开发的程序员</p>
         </div>
@@ -1511,7 +1511,7 @@ async function exportFlowFile(payload: unknown): Promise<void> {
     title: "导出链路配置",
     saveLabel: "导出",
     filters: { JSON: ["json"] },
-    defaultUri: vscode.Uri.file(`protoview-flow-${stamp()}.json`),
+    defaultUri: vscode.Uri.file(`oceanview-flow-${stamp()}.json`),
   });
   if (!uri) return;
   await fs.writeFile(uri.fsPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
@@ -1549,7 +1549,7 @@ function stamp(): string {
 async function envFilePath(): Promise<string | undefined> {
   const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   if (!folder) return undefined;
-  return path.join(folder, ".protoview", "environments.json");
+  return path.join(folder, ".oceanview", "environments.json");
 }
 
 export async function loadEnvFile(): Promise<ClientEnvFile> {

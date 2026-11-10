@@ -1,28 +1,28 @@
 {
-  "name": "@zhhoceanfly/protoview",
-  "version": "0.1.6",
+  "name": "@zhhoceanfly/oceanview",
+  "version": "0.1.1",
   "description": "ProtoView Client CLI：本地启动浏览器调试 gRPC / HTTP / SSE / WebSocket（Rider / 任意 IDE 可用）",
   "license": "MIT",
   "author": "zoceanfly",
-  "homepage": "https://github.com/zhhOceanfly/ProtoView",
+  "homepage": "https://github.com/zhhOceanfly/OceanView",
   "repository": {
     "type": "git",
-    "url": "https://github.com/zhhOceanfly/ProtoView.git",
+    "url": "https://github.com/zhhOceanfly/OceanView.git",
     "directory": "packages/cli"
   },
   "bugs": {
-    "url": "https://github.com/zhhOceanfly/ProtoView/issues"
+    "url": "https://github.com/zhhOceanfly/OceanView/issues"
   },
   "keywords": [
     "protobuf",
     "proto",
     "grpc",
-    "protoview",
+    "oceanview",
     "client",
     "rider"
   ],
   "bin": {
-    "protoview": "bin/protoview.js"
+    "oceanview": "bin/oceanview.js"
   },
   "main": "dist/cli.js",
   "files": [
@@ -37,7 +37,7 @@
   "scripts": {
     "build": "node ../../scripts/build-cli.js",
     "dev": "node ../../scripts/dev-cli.js",
-    "start": "node bin/protoview.js",
+    "start": "node bin/oceanview.js",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {

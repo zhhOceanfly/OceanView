@@ -38,7 +38,7 @@ export class ProtoPanel {
   private ensure(): void {
     if (this.panel) return;
     const mediaRoot = vscode.Uri.joinPath(this.extensionUri, "media");
-    this.panel = vscode.window.createWebviewPanel("protoview.preview", "ProtoView", {
+    this.panel = vscode.window.createWebviewPanel("oceanview.preview", "ProtoView", {
       viewColumn: vscode.ViewColumn.Beside,
       preserveFocus: true,
     }, {

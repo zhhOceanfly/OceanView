@@ -1,5 +1,5 @@
 /**
- * Build ProtoView DBX plugin under packages/dbx-plugin:
+ * Build OceanView DBX plugin under packages/dbx-plugin:
  * 1) compile shared TS core
  * 2) copy client/ → ui/
  * 3) copy core + upload helper → runtime/ (Node JSON-RPC worker)

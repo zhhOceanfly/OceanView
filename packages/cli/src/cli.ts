@@ -18,7 +18,7 @@ function parseArgs(argv: string[]): CliArgs {
     branch: "main",
     port: 3920,
     // 开发 watch 会反复重启进程；默认不弹浏览器，避免每次开新标签
-    open: process.env.PROTOVIEW_DEV !== "1",
+    open: process.env.OCEANVIEW_DEV !== "1",
     showGoogle: false,
     help: false,
   };
@@ -41,7 +41,7 @@ function printHelp(): void {
   console.log(`ProtoView Client CLI
 
 Usage:
-  protoview [options] [dir]
+  oceanview [options] [dir]
 
 Options:
   --proto, -p <dir>     Scan .proto under directory (default: cwd)
@@ -54,14 +54,14 @@ Options:
   -h, --help            Show help
 
 Env:
-  PROTOVIEW_EDITOR      Editor to open source (cursor / code / idea, or
+  OCEANVIEW_EDITOR      Editor to open source (cursor / code / idea, or
                         template with {file} {line})
 
 Examples:
-  protoview
-  protoview --proto ./api
-  protoview --git https://github.com/org/repo.git --branch main
-  PROTOVIEW_EDITOR=cursor protoview
+  oceanview
+  oceanview --proto ./api
+  oceanview --git https://github.com/org/repo.git --branch main
+  OCEANVIEW_EDITOR=cursor oceanview
 `);
 }
 
@@ -72,11 +72,11 @@ async function main(): Promise<void> {
     return;
   }
 
-  const publicDir = process.env.PROTOVIEW_PUBLIC_DIR
-    ? path.resolve(process.env.PROTOVIEW_PUBLIC_DIR)
+  const publicDir = process.env.OCEANVIEW_PUBLIC_DIR
+    ? path.resolve(process.env.OCEANVIEW_PUBLIC_DIR)
     : path.join(__dirname, "..", "public");
-  if (process.env.PROTOVIEW_DEV === "1") {
-    console.log(`[protoview] DEV publicDir=${publicDir}`);
+  if (process.env.OCEANVIEW_DEV === "1") {
+    console.log(`[oceanview] DEV publicDir=${publicDir}`);
   }
   await startServer({
     publicDir,

@@ -107,7 +107,7 @@ export function registerLanguageFeatures(
         return [vscode.TextEdit.replace(full, formatted)];
       },
     }),
-    vscode.commands.registerCommand("protoview.formatDocument", async () => {
+    vscode.commands.registerCommand("oceanview.formatDocument", async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor || !editor.document.fileName.endsWith(".proto")) {
         void vscode.window.showWarningMessage("请先打开一个 .proto 文件");

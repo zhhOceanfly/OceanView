@@ -1,14 +1,14 @@
 {
   "$schema": "https://raw.githubusercontent.com/t8y2/dbx/main/plugins/manifest.schema.json",
   "manifest_version": 1,
-  "id": "io.github.zhhoceanfly.protoview",
-  "name": "ApiMan",
-  "version": "0.1.6",
+  "id": "io.github.zhhoceanfly.oceanview",
+  "name": "OceanView",
+  "version": "0.1.1",
   "publisher": "zhhoceanfly",
   "description": "Browse Protobuf and debug gRPC / HTTP / SSE / WebSocket APIs inside DBX. Requires Node.js >= 18 on PATH (sidecar runs runtime/sidecar.js via node).",
   "icon": "assets/plugin.svg",
-  "source": "https://github.com/zhhOceanfly/ProtoView",
-  "homepage": "https://github.com/zhhOceanfly/ProtoView",
+  "source": "https://github.com/zhhOceanfly/OceanView",
+  "homepage": "https://github.com/zhhOceanfly/OceanView",
   "engines": {
     "dbx": ">=0.6.0",
     "host_api": "1"
@@ -25,18 +25,20 @@
       "entry": "ui/index.html"
     },
     "backend": {
-      "protocol_versions": [1],
+      "protocol_versions": [
+        1
+      ],
       "transport": "stdio-jsonl",
-      "executable": "bin/protoview-dbx"
+      "executable": "bin/oceanview-dbx"
     }
   },
   "contributions": [
     {
       "type": "connection-provider",
-      "id": "io.github.zhhoceanfly.protoview.connection",
-      "label": "ApiMan",
+      "id": "io.github.zhhoceanfly.oceanview.connection",
+      "label": "OceanView",
       "icon": "assets/plugin.svg",
-      "database_type": "protoview-grpc",
+      "database_type": "oceanview-grpc",
       "description": "gRPC / HTTP API debugging with Protobuf definitions. Host/port live in Client environments.",
       "fields": [
         {
@@ -45,7 +47,7 @@
           "type": "text",
           "binding": "name",
           "required": true,
-          "default": "ApiMan"
+          "default": "OceanView"
         },
         {
           "key": "source_mode",
@@ -55,8 +57,14 @@
           "required": true,
           "default": "directory",
           "options": [
-            { "label": "Local directory", "value": "directory" },
-            { "label": "Git repository", "value": "git" }
+            {
+              "label": "Local directory",
+              "value": "directory"
+            },
+            {
+              "label": "Git repository",
+              "value": "git"
+            }
           ]
         },
         {
@@ -65,9 +73,21 @@
           "type": "text",
           "binding": "config",
           "placeholder": "Select a folder containing .proto files",
-          "picker": { "kind": "directory" },
-          "visible_when": { "field": "source_mode", "one_of": ["directory"] },
-          "required_when": { "field": "source_mode", "one_of": ["directory"] }
+          "picker": {
+            "kind": "directory"
+          },
+          "visible_when": {
+            "field": "source_mode",
+            "one_of": [
+              "directory"
+            ]
+          },
+          "required_when": {
+            "field": "source_mode",
+            "one_of": [
+              "directory"
+            ]
+          }
         },
         {
           "key": "git_url",
@@ -75,8 +95,18 @@
           "type": "text",
           "binding": "config",
           "placeholder": "https://github.com/org/repo.git",
-          "visible_when": { "field": "source_mode", "one_of": ["git"] },
-          "required_when": { "field": "source_mode", "one_of": ["git"] }
+          "visible_when": {
+            "field": "source_mode",
+            "one_of": [
+              "git"
+            ]
+          },
+          "required_when": {
+            "field": "source_mode",
+            "one_of": [
+              "git"
+            ]
+          }
         },
         {
           "key": "git_branch",
@@ -85,44 +115,53 @@
           "binding": "config",
           "default": "main",
           "placeholder": "main",
-          "visible_when": { "field": "source_mode", "one_of": ["git"] }
+          "visible_when": {
+            "field": "source_mode",
+            "one_of": [
+              "git"
+            ]
+          }
         }
       ],
-      "workbench": "io.github.zhhoceanfly.protoview.client",
-      "capabilities": ["test", "connect", "disconnect"]
+      "workbench": "io.github.zhhoceanfly.oceanview.client",
+      "capabilities": [
+        "test",
+        "connect",
+        "disconnect"
+      ]
     },
     {
       "type": "workbench",
-      "id": "io.github.zhhoceanfly.protoview.client",
-      "label": "ApiMan",
+      "id": "io.github.zhhoceanfly.oceanview.client",
+      "label": "OceanView",
       "description": "Protobuf browser and API client (gRPC / HTTP / SSE / WebSocket).",
       "icon": "assets/plugin.svg"
     },
     {
       "type": "command",
-      "id": "io.github.zhhoceanfly.protoview.open",
-      "label": "Open ApiMan",
+      "id": "io.github.zhhoceanfly.oceanview.open",
+      "label": "Open OceanView",
       "icon": "assets/plugin.svg",
       "action": {
         "type": "open-workbench",
-        "workbench": "io.github.zhhoceanfly.protoview.client",
+        "workbench": "io.github.zhhoceanfly.oceanview.client",
         "presentation": "tab"
       }
     },
     {
       "type": "menus",
-      "id": "io.github.zhhoceanfly.protoview.menus",
+      "id": "io.github.zhhoceanfly.oceanview.menus",
       "items": [
         {
           "location": "appToolbar",
-          "command": "io.github.zhhoceanfly.protoview.open",
+          "command": "io.github.zhhoceanfly.oceanview.open",
           "group": "navigation",
           "order": 80,
           "default_visible": true
         },
         {
           "location": "commandPalette",
-          "command": "io.github.zhhoceanfly.protoview.open",
+          "command": "io.github.zhhoceanfly.oceanview.open",
           "group": "secondary",
           "order": 1
         }
@@ -131,26 +170,43 @@
   ],
   "localizations": {
     "zh-CN": {
-      "name": "ApiMan",
+      "name": "OceanView",
       "description": "在 DBX 中浏览 Protobuf，并用 gRPC / HTTP / SSE / WebSocket 调试接口。需要本机已安装 Node.js ≥ 18 且在 PATH 中。",
       "contributions": {
-        "io.github.zhhoceanfly.protoview.connection": {
-          "label": "ApiMan",
+        "io.github.zhhoceanfly.oceanview.connection": {
+          "label": "OceanView",
           "description": "基于 Protobuf 的 gRPC / HTTP 接口调试；调用地址在 Client 环境里配置。",
           "fields": {
-            "display_name": { "label": "名称" },
-            "source_mode": { "label": "Proto 来源", "options": { "directory": "本地目录", "git": "Git 仓库" } },
-            "dir_path": { "label": "Proto 目录", "placeholder": "选择包含 .proto 的文件夹" },
-            "git_url": { "label": "Git 地址", "placeholder": "https://github.com/org/repo.git" },
-            "git_branch": { "label": "Git 分支", "placeholder": "main" }
+            "display_name": {
+              "label": "名称"
+            },
+            "source_mode": {
+              "label": "Proto 来源",
+              "options": {
+                "directory": "本地目录",
+                "git": "Git 仓库"
+              }
+            },
+            "dir_path": {
+              "label": "Proto 目录",
+              "placeholder": "选择包含 .proto 的文件夹"
+            },
+            "git_url": {
+              "label": "Git 地址",
+              "placeholder": "https://github.com/org/repo.git"
+            },
+            "git_branch": {
+              "label": "Git 分支",
+              "placeholder": "main"
+            }
           }
         },
-        "io.github.zhhoceanfly.protoview.client": {
-          "label": "ApiMan",
+        "io.github.zhhoceanfly.oceanview.client": {
+          "label": "OceanView",
           "description": "Protobuf 浏览与 API 调试（gRPC / HTTP / SSE / WebSocket）。"
         },
-        "io.github.zhhoceanfly.protoview.open": {
-          "label": "打开 ApiMan"
+        "io.github.zhhoceanfly.oceanview.open": {
+          "label": "打开 OceanView"
         }
       }
     }

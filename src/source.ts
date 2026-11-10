@@ -15,7 +15,7 @@ export {
   syncGitSource,
 } from "./sourceCore";
 
-const STATE_KEY = "protoview.source";
+const STATE_KEY = "oceanview.source";
 
 export function loadSourceConfig(context: vscode.ExtensionContext): ProtoSourceConfig {
   const saved = context.workspaceState.get<Partial<ProtoSourceConfig>>(STATE_KEY) ?? {};

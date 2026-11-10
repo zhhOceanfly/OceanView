@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "运行 ProtoView",
+      "name": "运行 OceanView",
       "type": "extensionHost",
       "request": "launch",
       "runtimeExecutable": "${execPath}",
@@ -16,7 +16,7 @@
       "internalConsoleOptions": "openOnSessionStart"
     },
     {
-      "name": "运行 ProtoView（跳过编译）",
+      "name": "运行 OceanView（跳过编译）",
       "type": "extensionHost",
       "request": "launch",
       "runtimeExecutable": "${execPath}",

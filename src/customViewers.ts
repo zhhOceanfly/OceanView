@@ -22,7 +22,7 @@ void readDocumentBytes;
 let compareOpening = false;
 
 class ExcelViewEditorProvider implements vscode.CustomEditorProvider {
-  public static readonly viewType = "protoview.excelViewer";
+  public static readonly viewType = "oceanview.excelViewer";
 
   public constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -122,7 +122,7 @@ class ExcelViewEditorProvider implements vscode.CustomEditorProvider {
     }) => {
       if (!message) return;
       if (message.type === "diffHead") {
-        await vscode.commands.executeCommand("protoview.excelDiff", document.uri);
+        await vscode.commands.executeCommand("oceanview.excelDiff", document.uri);
         return;
       }
       if (message.type === "openClient") {
@@ -150,7 +150,7 @@ class ExcelViewEditorProvider implements vscode.CustomEditorProvider {
 }
 
 class DocsViewEditorProvider implements vscode.CustomEditorProvider {
-  public static readonly viewType = "protoview.docsViewer";
+  public static readonly viewType = "oceanview.docsViewer";
 
   public constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -325,7 +325,7 @@ async function readGitBytes(uri: vscode.Uri): Promise<Buffer | null> {
 
 /** 打开 Client 并定位到该文件对应的视图 */
 async function openInClient(view: "excel" | "docs", file: string): Promise<void> {
-  const command = view === "excel" ? "protoview.openExcelView" : "protoview.openDocsView";
+  const command = view === "excel" ? "oceanview.openExcelView" : "oceanview.openDocsView";
   // 让快速入口命令拿到目标文件：临时把 URI 记在命令参数里
   await vscode.commands.executeCommand(command, vscode.Uri.file(file));
 }

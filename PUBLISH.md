@@ -1,6 +1,6 @@
-# ProtoView 打包与发布
+# OceanView 打包与发布
 
-本文说明如何打包、发布 **VS Code Marketplace**、**Open VSX（Cursor）** 以及 **npm CLI（`@zhhoceanfly/protoview`）**。日常使用说明见 [README.md](README.md)。
+本文说明如何打包、发布 **VS Code Marketplace**、**Open VSX（Cursor）** 以及 **npm CLI（`@zhhoceanfly/oceanview`）**。日常使用说明见 [README.md](README.md)。
 
 要求：**Node.js 18+**（推荐 **20.x**；Node 22 下全局 `@vscode/vsce@4` 可能报错）。
 
@@ -13,7 +13,7 @@
 | `npm install` | 安装依赖 |
 | `npm run compile` | 编译扩展 TypeScript → `out/` |
 | `npm run watch` | 监听编译 |
-| `npm run package` | 编译并打出 `protoview-x.y.z.vsix` |
+| `npm run package` | 编译并打出 `oceanview-x.y.z.vsix` |
 | `npm run package:precheck` | 预览将打进 VSIX 的文件 |
 | `npm run package:fresh` | 删除旧 vsix 后重新打包 |
 | `npm run clean:vsix` | 删除根目录下所有 `.vsix` |
@@ -21,12 +21,12 @@
 | `npm run publish:patch` / `publish:minor` | 升版本并发布到 Marketplace |
 | `npm run openvsx:namespace` | 在 Open VSX 创建 publisher 命名空间（首次） |
 | `npm run publish:openvsx` | 打 VSIX 并发布到 Open VSX |
-| `npm run build:cli` | 构建 npm 包 `@zhhoceanfly/protoview` |
+| `npm run build:cli` | 构建 npm 包 `@zhhoceanfly/oceanview` |
 | `npm run dev:cli` | CLI 开发模式：tsc watch + 直连 `client/`，改代码自动重启 |
 | `npm run publish:cli` | 构建并 `npm publish` CLI 包 |
 
-本地调试扩展：按 **F5**（「运行 ProtoView」）打开 Extension Development Host。  
-若本机已从商店安装过 ProtoView（同 ID `zoceanfly.protoview`），会与开发版抢激活。`.vscode/launch.json` 使用 `--disable-extensions`，调试窗口里只加载本仓库开发版，主窗口商店版不受影响。仍异常时：扩展面板暂时 **禁用** ProtoView 后再 F5。
+本地调试扩展：按 **F5**（「运行 OceanView」）打开 Extension Development Host。  
+若本机已从商店安装过 OceanView（同 ID `zoceanfly.oceanview`），会与开发版抢激活。`.vscode/launch.json` 使用 `--disable-extensions`，调试窗口里只加载本仓库开发版，主窗口商店版不受影响。仍异常时：扩展面板暂时 **禁用** OceanView 后再 F5。
 
 `packages/**` 已写入 [.vscodeignore](.vscodeignore)，打 VSIX 时不会打进 CLI 产物。
 
@@ -39,7 +39,7 @@
 
 ```bash
 npm run package
-# 得到 protoview-x.y.z.vsix → 管理页 → 上传新版本
+# 得到 oceanview-x.y.z.vsix → 管理页 → 上传新版本
 ```
 
 3. **方式 B（`vsce` + Azure DevOps PAT）**：PAT 必须由「拥有 publisher 的同一个 Microsoft 账号」创建。
@@ -53,7 +53,7 @@ npm run package
 
 | 项 | 值 |
 | --- | --- |
-| Name | 任意，如 `vsce-protoview` |
+| Name | 任意，如 `vsce-oceanview` |
 | Organization | **All accessible organizations**（不要只选某个无关组织） |
 | Expiration | 按需（如 90 天） |
 | Scopes | **Custom defined** → 点 **Show all scopes** → 找到 **Marketplace** → 勾选 **Manage** |
@@ -77,9 +77,9 @@ $env:VSCE_PAT="你的PAT"
 npm run publish
 ```
 
-扩展页：`https://marketplace.visualstudio.com/items?itemName=zoceanfly.protoview`
+扩展页：`https://marketplace.visualstudio.com/items?itemName=zoceanfly.oceanview`
 
-仅内部分发时，对方可用「从 VSIX 安装…」安装 `protoview-*.vsix`。
+仅内部分发时，对方可用「从 VSIX 安装…」安装 `oceanview-*.vsix`。
 
 #### 常见问题（`vsce login` / `publish`）
 
@@ -108,7 +108,7 @@ npm run publish:openvsx            # 打包并发布到 Open VSX
 ```
 
 脚本说明见 [`scripts/openvsx-publish.js`](scripts/openvsx-publish.js)。发布后页面：  
-`https://open-vsx.org/extension/zoceanfly/protoview`
+`https://open-vsx.org/extension/zoceanfly/oceanview`
 
 ### GitHub Actions 自动发布
 
@@ -130,25 +130,25 @@ npm run publish:openvsx            # 打包并发布到 Open VSX
 
 | 渠道 | Tag 示例 | Workflow |
 |------|----------|----------|
-| Open VSX | `ext-v0.1.6` | `publish-openvsx.yml` |
-| npm CLI | `cli-v0.1.6` | `publish-npm-cli.yml` |
-| DBX | `dbx-v0.1.6` | `publish-dbx-plugin.yml` |
+| Open VSX | `ext-v0.1.1` | `publish-openvsx.yml` |
+| npm CLI | `cli-v0.1.1` | `publish-npm-cli.yml` |
+| DBX | `dbx-v0.1.1` | `publish-dbx-plugin.yml` |
 
 | 方式 | 操作 |
 |------|------|
 | 手动 | Actions → **Publish Open VSX** → **Run workflow** |
-| Tag | `git tag ext-v0.1.6 && git push origin ext-v0.1.6` |
+| Tag | `git tag ext-v0.1.1 && git push origin ext-v0.1.1` |
 
 工作流会 `npm ci` → `npm run publish:openvsx`（打包 VSIX 并用密钥发布）。同一版本已存在时 Open VSX 会拒绝，需先升版本。
 
-Cursor 对 Open VSX 有镜像同步延迟（常见数小时）；也可在 Cursor 里用「从 VSIX 安装」。用完整 ID 搜索：`zoceanfly.protoview`。
+Cursor 对 Open VSX 有镜像同步延迟（常见数小时）；也可在 Cursor 里用「从 VSIX 安装」。用完整 ID 搜索：`zoceanfly.oceanview`。
 
-## 发布 npm CLI（`@zhhoceanfly/protoview`）
+## 发布 npm CLI（`@zhhoceanfly/oceanview`）
 
 供 Rider 等环境在浏览器使用 ProtoView Client，与扩展共用 Client 页面逻辑。包目录：[`packages/cli`](packages/cli)，说明见 [`packages/cli/README.md`](packages/cli/README.md)。
 
 npm 组织：**`zhhoceanfly`**（与 VS Code Marketplace publisher `zoceanfly` 不同，勿混用）。  
-包页面：https://www.npmjs.com/package/@zhhoceanfly/protoview  
+包页面：https://www.npmjs.com/package/@zhhoceanfly/oceanview  
 
 ### 推荐：GitHub Actions（Trusted Publishing，无浏览器 MFA）
 
@@ -157,13 +157,13 @@ npm 组织：**`zhhoceanfly`**（与 VS Code Marketplace publisher `zoceanfly` �
 
 **1. 在 npm 绑定 Trusted Publisher（一次性）**
 
-1. 打开包 Settings：https://www.npmjs.com/package/@zhhoceanfly/protoview → **Settings** → **Trusted Publisher**
+1. 打开包 Settings：https://www.npmjs.com/package/@zhhoceanfly/oceanview → **Settings** → **Trusted Publisher**
 2. 选 **GitHub Actions**，填写（须与仓库完全一致，区分大小写）：
 
 | 项 | 值 |
 | --- | --- |
 | Organization or user | `zhhOceanfly`（你的 GitHub 用户/组织名） |
-| Repository | `ProtoView` |
+| Repository | `OceanView` |
 | Workflow filename | `publish-npm-cli.yml`（只要文件名，含 `.yml`） |
 | Allowed actions | 勾选允许 **`npm publish`**（若界面有该项） |
 
@@ -176,7 +176,7 @@ npm 组织：**`zhhoceanfly`**（与 VS Code Marketplace publisher `zoceanfly` �
 | 方式 | 操作 |
 |------|------|
 | 手动 | Actions → **Publish npm CLI** → **Run workflow** |
-| Tag | `git tag cli-v0.1.6 && git push origin cli-v0.1.6`（tag 名仅作触发，真正版本以 `packages/cli` 的 `version` 为准，当前 **0.1.6**） |
+| Tag | `git tag cli-v0.1.1 && git push origin cli-v0.1.1`（tag 名仅作触发，真正版本以 `packages/cli` 的 `version` 为准，当前 **0.1.1**） |
 
 工作流会 `npm ci` → `build:cli` → `npm publish ./packages/cli`。OIDC 由 `permissions.id-token: write` 提供，无需 Secret。
 
@@ -216,13 +216,13 @@ npm run publish:cli
 等价于 `npm run build:cli` + `npm publish ./packages/cli --access public --registry https://registry.npmjs.org/`。
 
 **不要**在仓库根目录执行 `npm publish`：根包 `"private": true`。  
-正确包名是 **`@zhhoceanfly/protoview`**（两个 `h`）。
+正确包名是 **`@zhhoceanfly/oceanview`**（两个 `h`）。
 
 验证：
 
 ```bash
-npm view @zhhoceanfly/protoview version --registry=https://registry.npmjs.org/
-npx @zhhoceanfly/protoview@latest --help
+npm view @zhhoceanfly/oceanview version --registry=https://registry.npmjs.org/
+npx @zhhoceanfly/oceanview@latest --help
 ```
 
 构建脚本：[`scripts/build-cli.js`](scripts/build-cli.js)。打进 npm 的内容见 `packages/cli` 的 `files` 字段。
@@ -236,14 +236,14 @@ npx @zhhoceanfly/protoview@latest --help
 | CI `Unable to authenticate` / `ENEEDAUTH` | 检查 Trusted Publisher 的用户名/仓库/workflow 文件名是否完全一致；新建后是否已在 2 天内成功发过一次；workflow 是否含 `id-token: write` |
 | CI `Cannot publish over existing version` | 先升 `packages/cli` 的 `version` 再跑 workflow |
 | `You do not have permission to publish` | 账号不是组织 `zhhoceanfly` 成员；确认登录的是有权限的账号 |
-| `Cannot publish over existing version` / `PUT .../protoview`（无 scope） | 误发了根包：用 `npm run publish:cli` 或 CI workflow |
+| `Cannot publish over existing version` / `PUT .../oceanview`（无 scope） | 误发了根包：用 `npm run publish:cli` 或 CI workflow |
 | 发布后 `npx` 仍是旧版 | 镜像延迟：指定版本或查官方 registry |
 
 ### 本地试跑（不发布）
 
 ```bash
 npm run build:cli
-node packages/cli/bin/protoview.js --proto ./你的proto目录 --port 3920
+node packages/cli/bin/oceanview.js --proto ./你的proto目录 --port 3920
 ```
 
 ### 开发调试（免每次 build）

@@ -25,7 +25,7 @@ export interface ProtoSourceConfig {
 
 export function sourceCacheDir(gitUrl: string): string {
   const hash = createHash("sha1").update(gitUrl.trim()).digest("hex").slice(0, 12);
-  return path.join(os.tmpdir(), "protoview-git", hash);
+  return path.join(os.tmpdir(), "oceanview-git", hash);
 }
 
 export async function syncGitSource(
@@ -44,7 +44,7 @@ export async function syncGitSource(
   const branch = config.gitBranch.trim() || "main";
   const localPath = url ? sourceCacheDir(url) : "";
 
-  write("======== ProtoView Git 同步开始 ========");
+  write("======== OceanView Git 同步开始 ========");
   write(`时间: ${new Date().toLocaleString()}`);
   write(`地址: ${url || "(空)"}`);
   write(`分支: ${branch}`);
@@ -89,7 +89,7 @@ export async function syncGitSource(
     }
 
     write("同步成功");
-    write("======== ProtoView Git 同步结束 ========");
+    write("======== OceanView Git 同步结束 ========");
     return {
       ...config,
       gitUrl: url,
@@ -104,7 +104,7 @@ export async function syncGitSource(
     write(`错误: ${message}`);
     write("提示: 私有仓库需本机 Git 已登录；HTTPS 可用凭证管理器，SSH 需配置密钥。");
     write("提示: 也可在终端手动执行上面的 git 命令对照报错。");
-    write("======== ProtoView Git 同步结束（失败） ========");
+    write("======== OceanView Git 同步结束（失败） ========");
     return {
       ...config,
       gitUrl: url,
@@ -187,7 +187,7 @@ async function runGit(args: string[], cwd: string, log: SourceLogger): Promise<s
       env: {
         ...process.env,
         GIT_TERMINAL_PROMPT: "0",
-        GIT_TRACE: process.env.PROTOVIEW_GIT_TRACE || "",
+        GIT_TRACE: process.env.OCEANVIEW_GIT_TRACE || "",
       },
     });
     const out = [stdout, stderr].filter(Boolean).join("\n").trim();

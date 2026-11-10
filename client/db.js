@@ -47,11 +47,11 @@
     resultPageSize: 100,
     pendingTableName: "",
   };
-  const MANUAL_DB_KEY = "protoview.db.lastManualDatabase";
+  const MANUAL_DB_KEY = "oceanview.db.lastManualDatabase";
   let searchWaiters = [];
 
   function post(type, payload) {
-    const send = window.ProtoViewHost?.post;
+    const send = window.OceanViewHost?.post;
     if (typeof send === "function") {
       send(type, payload);
       return true;
@@ -309,14 +309,14 @@
   /** 当前环境选中的库只记在本地，不写回 db-envs.json（否则 git 一直有变更）。 */
   function activeDatabaseFor(envId) {
     if (!envId) return "";
-    try { return localStorage.getItem(`protoview.db.activeDatabase:${envId}`) || ""; } catch { return ""; }
+    try { return localStorage.getItem(`oceanview.db.activeDatabase:${envId}`) || ""; } catch { return ""; }
   }
 
   function rememberActiveDatabase(envId, name) {
     if (!envId) return;
     try {
-      if (name) localStorage.setItem(`protoview.db.activeDatabase:${envId}`, name);
-      else localStorage.removeItem(`protoview.db.activeDatabase:${envId}`);
+      if (name) localStorage.setItem(`oceanview.db.activeDatabase:${envId}`, name);
+      else localStorage.removeItem(`oceanview.db.activeDatabase:${envId}`);
     } catch { /* ignore */ }
   }
 
@@ -456,10 +456,10 @@
     const tree = $("dbTree");
     if (!tree) return;
     const q = state.filter.trim().toLowerCase();
-    const changeOnly = window.ProtoViewGit?.changeOnly?.("dbChangeOnly");
+    const changeOnly = window.OceanViewGit?.changeOnly?.("dbChangeOnly");
     const groups = new Map();
     for (const table of state.tables) {
-      if (changeOnly && !window.ProtoViewGit?.isChanged?.(table.relative)) continue;
+      if (changeOnly && !window.OceanViewGit?.isChanged?.(table.relative)) continue;
       const columns = (table.columns || []).map((col) => `${col.name} ${col.type || ""} ${col.comment || ""}`).join(" ");
       const blob = `${table.fileName} ${table.relative} ${table.name} ${table.comment} ${columns} ${table.definition || ""}`.toLowerCase();
       if (q && !blob.includes(q)) continue;
@@ -1092,8 +1092,8 @@
   }
 
   function ensureTab() {
-    window.ProtoViewHome?.openTab?.("db", "DbView Client");
-    window.ProtoViewHome?.setView?.("db");
+    window.OceanViewHome?.openTab?.("db", "DbView Client");
+    window.OceanViewHome?.setView?.("db");
   }
 
   function ensure(force = false) {
@@ -1155,7 +1155,7 @@
     renderTree();
   });
   $("dbChangeOnly")?.addEventListener("change", () => {
-    window.ProtoViewGit?.request?.();
+    window.OceanViewGit?.request?.();
     renderTree();
   });
   $("dbTree")?.addEventListener("click", (event) => {
@@ -1271,7 +1271,7 @@
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "protoview-schema-sync.sql";
+    link.download = "oceanview-schema-sync.sql";
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -1307,7 +1307,7 @@
   $("dbJump")?.addEventListener("click", () => {
     const table = state.tables.find((item) => item.id === state.activeId);
     if (!table?.file) return;
-    window.ProtoViewClient?.openSourceFile?.(table.file, 1);
+    window.OceanViewClient?.openSourceFile?.(table.file, 1);
   });
   $("dbEnvBtn")?.addEventListener("click", () => {
     state.envEditing = currentEnv()?.id || "";
@@ -1320,7 +1320,7 @@
   });
   /** VS Code webview 里 window.confirm 常被禁用，统一走自建对话框 */
   function showConfirm(message) {
-    const builtin = window.ProtoViewDialog?.confirm;
+    const builtin = window.OceanViewDialog?.confirm;
     if (typeof builtin === "function") return builtin(message);
     return Promise.resolve(window.confirm(message));
   }
@@ -1422,7 +1422,7 @@
   });
   bindSplit();
 
-  window.ProtoViewDb = {
+  window.OceanViewDb = {
     ensure: () => ensure(false),
     reload: () => post("sqlCatalog", { force: true }),
     rerender: () => renderTree(),

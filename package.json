@@ -1,18 +1,18 @@
 {
-  "name": "protoview",
-  "displayName": "ProtoView",
+  "name": "oceanview",
+  "displayName": "OceanView",
   "description": "浏览 Protobuf，并用 gRPC / HTTP / SSE / WebSocket 调试接口：侧边栏导航、Client、Auth、压测与链路调试",
-  "version": "0.1.6",
+  "version": "0.1.1",
   "private": true,
   "publisher": "zoceanfly",
   "license": "MIT",
-  "homepage": "https://github.com/zhhOceanfly/ProtoView",
+  "homepage": "https://github.com/zhhOceanfly/OceanView",
   "repository": {
     "type": "git",
-    "url": "https://github.com/zhhOceanfly/ProtoView.git"
+    "url": "https://github.com/zhhOceanfly/OceanView.git"
   },
   "bugs": {
-    "url": "https://github.com/zhhOceanfly/ProtoView/issues"
+    "url": "https://github.com/zhhOceanfly/OceanView/issues"
   },
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -23,7 +23,7 @@
     "protobuf",
     "proto",
     "grpc",
-    "protoview",
+    "oceanview",
     "grpcurl",
     "api"
   ],
@@ -36,108 +36,108 @@
     "Other"
   ],
   "activationEvents": [
-    "onView:protoview.explorer",
-    "onCommand:protoview.show",
-    "onCommand:protoview.openClient",
+    "onView:oceanview.explorer",
+    "onCommand:oceanview.show",
+    "onCommand:oceanview.openClient",
     "workspaceContains:**/*.proto"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "protoview.excelDiff",
+        "command": "oceanview.excelDiff",
         "title": "ExcelView 差异对比",
         "icon": "$(diff)",
-        "category": "ProtoView"
+        "category": "OceanView"
       },
       {
-        "command": "protoview.excelDiffUris",
+        "command": "oceanview.excelDiffUris",
         "title": "ExcelView 差异对比（两版本）",
-        "category": "ProtoView"
+        "category": "OceanView"
       },
       {
-        "command": "protoview.openExcelView",
+        "command": "oceanview.openExcelView",
         "title": "在 ExcelView 中打开",
-        "category": "ProtoView"
+        "category": "OceanView"
       },
       {
-        "command": "protoview.openDocsView",
+        "command": "oceanview.openDocsView",
         "title": "在 DocsView 中打开",
-        "category": "ProtoView"
+        "category": "OceanView"
       },
       {
-        "command": "protoview.openDbView",
+        "command": "oceanview.openDbView",
         "title": "在 DbView 中打开",
-        "category": "ProtoView"
+        "category": "OceanView"
       },
       {
-        "command": "protoview.openProtoView",
+        "command": "oceanview.openProtoView",
         "title": "在 ProtoView 中打开",
-        "category": "ProtoView"
+        "category": "OceanView"
       },
       {
-        "command": "protoview.show",
+        "command": "oceanview.show",
         "title": "在预览中打开",
-        "category": "ProtoView"
+        "category": "OceanView"
       },
       {
-        "command": "protoview.openSource",
+        "command": "oceanview.openSource",
         "title": "跳转到源码",
         "icon": "$(go-to-file)",
-        "category": "ProtoView"
+        "category": "OceanView"
       },
       {
-        "command": "protoview.refresh",
+        "command": "oceanview.refresh",
         "title": "重新解析",
         "icon": "$(refresh)",
-        "category": "ProtoView"
+        "category": "OceanView"
       },
       {
-        "command": "protoview.showAtCursor",
+        "command": "oceanview.showAtCursor",
         "title": "预览光标所在定义",
-        "category": "ProtoView"
+        "category": "OceanView"
       },
       {
-        "command": "protoview.toggleSourceMode",
+        "command": "oceanview.toggleSourceMode",
         "title": "切换 Proto 来源",
-        "category": "ProtoView"
+        "category": "OceanView"
       },
       {
-        "command": "protoview.editGitUrl",
+        "command": "oceanview.editGitUrl",
         "title": "编辑 Git 地址",
-        "category": "ProtoView"
+        "category": "OceanView"
       },
       {
-        "command": "protoview.editGitBranch",
+        "command": "oceanview.editGitBranch",
         "title": "编辑 Git 分支",
-        "category": "ProtoView"
+        "category": "OceanView"
       },
       {
-        "command": "protoview.syncGitSource",
+        "command": "oceanview.syncGitSource",
         "title": "同步 Git Proto 来源",
         "icon": "$(cloud-download)",
-        "category": "ProtoView"
+        "category": "OceanView"
       },
       {
-        "command": "protoview.showGitLog",
+        "command": "oceanview.showGitLog",
         "title": "查看 Git 拉取日志",
-        "category": "ProtoView"
+        "category": "OceanView"
       },
       {
-        "command": "protoview.openGitTemp",
+        "command": "oceanview.openGitTemp",
         "title": "打开 Git 临时目录",
-        "category": "ProtoView"
+        "category": "OceanView"
       },
       {
-        "command": "protoview.openClient",
+        "command": "oceanview.openClient",
         "title": "打开 ProtoView Client",
         "icon": "$(window)",
-        "category": "ProtoView"
+        "category": "OceanView"
       },
       {
-        "command": "protoview.formatDocument",
+        "command": "oceanview.formatDocument",
         "title": "格式化 Proto",
-        "category": "ProtoView"
+        "category": "OceanView"
       }
     ],
     "languages": [
@@ -157,16 +157,16 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "protoview",
-          "title": "ProtoView",
+          "id": "oceanview",
+          "title": "OceanView",
           "icon": "media/icon.svg"
         }
       ]
     },
     "views": {
-      "protoview": [
+      "oceanview": [
         {
-          "id": "protoview.explorer",
+          "id": "oceanview.explorer",
           "name": "ProtoView"
         }
       ]
@@ -174,67 +174,67 @@
     "menus": {
       "view/title": [
         {
-          "command": "protoview.refresh",
-          "when": "view == protoview.explorer",
+          "command": "oceanview.refresh",
+          "when": "view == oceanview.explorer",
           "group": "navigation"
         }
       ],
       "view/item/context": [
         {
-          "command": "protoview.openSource",
-          "when": "view == protoview.explorer && viewItem == source",
+          "command": "oceanview.openSource",
+          "when": "view == oceanview.explorer && viewItem == source",
           "group": "navigation"
         }
       ],
       "editor/context": [
         {
-          "command": "protoview.showAtCursor",
+          "command": "oceanview.showAtCursor",
           "when": "resourceExtname == .proto",
           "group": "navigation"
         },
         {
-          "command": "protoview.formatDocument",
+          "command": "oceanview.formatDocument",
           "when": "resourceExtname == .proto",
           "group": "1_modification"
         },
         {
-          "command": "protoview.excelDiff",
+          "command": "oceanview.excelDiff",
           "when": "resourceExtname == .xlsx || resourceExtname == .xlsm || resourceExtname == .xls || resourceExtname == .csv",
           "group": "navigation"
         }
       ],
       "scm/resourceState/context": [
         {
-          "command": "protoview.excelDiff",
+          "command": "oceanview.excelDiff",
           "when": "resourceExtname == .xlsx || resourceExtname == .xlsm || resourceExtname == .xls || resourceExtname == .csv",
           "group": "1_modification"
         }
       ],
       "scm/resourceFolder/context": [
         {
-          "command": "protoview.excelDiff",
+          "command": "oceanview.excelDiff",
           "when": "resourceExtname == .xlsx || resourceExtname == .xlsm",
           "group": "1_modification"
         }
       ],
       "editor/title": [
         {
-          "command": "protoview.openProtoView",
+          "command": "oceanview.openProtoView",
           "when": "resourceExtname == .proto",
           "group": "navigation@9"
         },
         {
-          "command": "protoview.openDbView",
+          "command": "oceanview.openDbView",
           "when": "resourceExtname == .sql",
           "group": "navigation@9"
         },
         {
-          "command": "protoview.openDocsView",
+          "command": "oceanview.openDocsView",
           "when": "resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdx || resourceExtname == .docx",
           "group": "navigation@9"
         },
         {
-          "command": "protoview.openExcelView",
+          "command": "oceanview.openExcelView",
           "when": "resourceExtname == .xlsx || resourceExtname == .xlsm || resourceExtname == .xls || resourceExtname == .csv",
           "group": "navigation@9"
         }
@@ -242,47 +242,63 @@
     },
     "customEditors": [
       {
-        "viewType": "protoview.excelViewer",
+        "viewType": "oceanview.excelViewer",
         "displayName": "ExcelView",
         "selector": [
-          { "filenamePattern": "*.xlsx" },
-          { "filenamePattern": "*.xlsm" },
-          { "filenamePattern": "*.xls" },
-          { "filenamePattern": "*.csv" }
+          {
+            "filenamePattern": "*.xlsx"
+          },
+          {
+            "filenamePattern": "*.xlsm"
+          },
+          {
+            "filenamePattern": "*.xls"
+          },
+          {
+            "filenamePattern": "*.csv"
+          }
         ],
         "priority": "default"
       },
       {
-        "viewType": "protoview.docsViewer",
+        "viewType": "oceanview.docsViewer",
         "displayName": "DocsView",
         "selector": [
-          { "filenamePattern": "*.md" },
-          { "filenamePattern": "*.markdown" },
-          { "filenamePattern": "*.mdx" },
-          { "filenamePattern": "*.docx" }
+          {
+            "filenamePattern": "*.md"
+          },
+          {
+            "filenamePattern": "*.markdown"
+          },
+          {
+            "filenamePattern": "*.mdx"
+          },
+          {
+            "filenamePattern": "*.docx"
+          }
         ],
         "priority": "default"
       }
     ],
     "configurationDefaults": {
       "workbench.editorAssociations": {
-        "*.md": "protoview.docsViewer",
-        "*.markdown": "protoview.docsViewer",
-        "*.mdx": "protoview.docsViewer",
-        "*.docx": "protoview.docsViewer",
-        "*.xlsx": "protoview.excelViewer",
-        "*.xlsm": "protoview.excelViewer"
+        "*.md": "oceanview.docsViewer",
+        "*.markdown": "oceanview.docsViewer",
+        "*.mdx": "oceanview.docsViewer",
+        "*.docx": "oceanview.docsViewer",
+        "*.xlsx": "oceanview.excelViewer",
+        "*.xlsm": "oceanview.excelViewer"
       },
       "[protobuf]": {
-        "editor.defaultFormatter": "zoceanfly.protoview",
+        "editor.defaultFormatter": "zoceanfly.oceanview",
         "editor.formatOnSave": false,
         "editor.wordBasedSuggestions": "off"
       }
     },
     "configuration": {
-      "title": "ProtoView",
+      "title": "OceanView",
       "properties": {
-        "protoview.showGoogle": {
+        "oceanview.showGoogle": {
           "type": "boolean",
           "default": false,
           "description": "在侧边栏中显示 google.* 标准包。关闭时仍会解析它们，以便跳转到被引用的类型。"
