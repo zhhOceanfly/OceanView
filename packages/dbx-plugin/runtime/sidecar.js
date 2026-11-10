@@ -14,7 +14,10 @@ const PLUGIN_VERSION = "0.1.1";
 
 const coreDir = path.join(__dirname, "core");
 const { ClientHost } = require(path.join(coreDir, "hostCore.js"));
-const { materializeProtoUpload, materializeGhzUpload } = require("./uploadProtoDir.js");
+const { materializeProtoUpload, materializeGhzUpload, ProtoUploadSession } = require("./uploadProtoDir.js");
+
+/** 进行中的分片上传会话（按 uploadId 区分） */
+const uploads = new Map();
 
 const dataDir = process.env.DBX_PLUGIN_DATA_DIR
   ? path.resolve(process.env.DBX_PLUGIN_DATA_DIR)
@@ -94,16 +97,67 @@ async function handleClientMessage(id, params) {
   const type = message.type;
 
   try {
-    if (type === "uploadProtoDir") {
-      const result = await materializeProtoUpload(message.payload || {});
+    // 分片上传（begin → chunk… → end）：与 CLI 一致，避免单条消息过大
+    if (type === "uploadBegin") {
+      const payload = message.payload || {};
+      const uploadId = String(payload.uploadId || "");
+      if (uploadId) {
+        const session = new ProtoUploadSession(payload.name);
+        await session.begin();
+        uploads.set(uploadId, { session, at: Date.now() });
+      }
+      await replyResult(id, { ok: true });
+      return;
+    }
+
+    if (type === "uploadProtoDirChunk") {
+      const payload = message.payload || {};
+      const entry = uploads.get(String(payload.uploadId || ""));
+      if (entry) {
+        entry.at = Date.now();
+        await entry.session.write(payload.files || []);
+      }
+      await replyResult(id, { ok: true });
+      return;
+    }
+
+    if (type === "uploadEnd") {
+      const payload = message.payload || {};
+      const uploadId = String(payload.uploadId || "");
+      const entry = uploads.get(uploadId);
+      uploads.delete(uploadId);
+      if (!entry) {
+        await sendToUi({ type: "toast", level: "err", text: "上传会话已失效，请重新选择目录" });
+        await replyResult(id, { ok: true });
+        return;
+      }
+      const result = await entry.session.finish();
       if (!result.count) {
-        await sendToUi({ type: "toast", level: "err", text: "目录中未找到 .proto 文件" });
+        await sendToUi({ type: "toast", level: "err", text: "目录中未找到 .proto / Excel / 文档 / SQL 文件" });
       } else {
         await sendToUi({
           type: "pickedProtoDir",
           path: result.dir,
           label: result.label,
-          count: result.count,
+          count: result.protoCount,
+          fileCount: result.count,
+        });
+      }
+      await replyResult(id, { ok: true });
+      return;
+    }
+
+    if (type === "uploadProtoDir") {
+      const result = await materializeProtoUpload(message.payload || {});
+      if (!result.count) {
+        await sendToUi({ type: "toast", level: "err", text: "目录中未找到 .proto / Excel / 文档 / SQL 文件" });
+      } else {
+        await sendToUi({
+          type: "pickedProtoDir",
+          path: result.dir,
+          label: result.label,
+          count: result.protoCount,
+          fileCount: result.count,
         });
       }
       await replyResult(id, { ok: true });

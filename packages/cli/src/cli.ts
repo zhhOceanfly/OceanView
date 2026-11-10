@@ -3,6 +3,8 @@ import { startServer } from "./server";
 
 interface CliArgs {
   proto: string;
+  /** 工作区根：Excel / Docs / SQL / 环境文件所在目录，默认 cwd */
+  workspace: string;
   git: string;
   branch: string;
   port: number;
@@ -15,6 +17,7 @@ interface CliArgs {
 function parseArgs(argv: string[]): CliArgs {
   const args: CliArgs = {
     proto: process.cwd(),
+    workspace: process.cwd(),
     git: "",
     branch: "main",
     port: 3920,
@@ -29,6 +32,7 @@ function parseArgs(argv: string[]): CliArgs {
     if (a === "-h" || a === "--help") args.help = true;
     else if (a === "-v" || a === "-V" || a === "--version") args.version = true;
     else if (a === "--proto" || a === "-p") args.proto = path.resolve(argv[++i] || ".");
+    else if (a === "--workspace" || a === "-w") args.workspace = path.resolve(argv[++i] || ".");
     else if (a === "--git" || a === "-g") args.git = argv[++i] || "";
     else if (a === "--branch" || a === "-b") args.branch = argv[++i] || "main";
     else if (a === "--port") args.port = Math.max(1, Number(argv[++i] || 3920) || 3920);
@@ -48,6 +52,7 @@ Usage:
 
 Options:
   --proto, -p <dir>     Scan .proto under directory (default: cwd)
+  --workspace, -w <dir> Workspace root for Excel / Docs / SQL (default: cwd)
   --git, -g <url>       Use Git repo as proto source (clone to temp dir)
   --branch, -b <name>   Git branch (default: main)
   --port <n>            HTTP port (default: 3920)
@@ -55,6 +60,7 @@ Options:
   --open                Open browser on start
   --show-google         Include google.* packages in tree
   -h, --help            Show help
+  -V, --version         Print version
 
 Env:
   OCEANVIEW_EDITOR      Editor to open source (cursor / code / idea, or
@@ -63,6 +69,8 @@ Env:
 Examples:
   oceanview
   oceanview --proto ./api
+  # proto 在子目录、配置表在上层时，把工作区指到项目根：
+  oceanview --proto ./api --workspace .
   oceanview --git https://github.com/org/repo.git --branch main
   oceanview -V              # 打印版本
   OCEANVIEW_EDITOR=cursor oceanview
@@ -100,7 +108,12 @@ async function main(): Promise<void> {
   }
   await startServer({
     publicDir,
-    workspaceRoot: args.proto,
+    // proto 扫描根（--proto / 位置参数）
+    protoRoot: args.proto,
+    // 工作区根：Excel / Docs / SQL / 环境文件的归属地。
+    // 默认取启动目录，不能直接用 --proto —— 用户常常把 proto 指到子目录
+    // （如 ./api），那样 Excel 和文档都在上一级，就会全部扫不到。
+    workspaceRoot: args.workspace,
     port: args.port,
     openBrowser: args.open,
     showGoogle: args.showGoogle,

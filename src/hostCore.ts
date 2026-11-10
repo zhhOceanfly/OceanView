@@ -17,7 +17,7 @@ import { collectCodeSymbols } from "./codeSymbols";
 import { buildCallGraph } from "./callGraph";
 import { excelCatalogMerged, excelDiff, excelPage, excelSearch, excelUpdateCell } from "./excelIndex";
 import { gitChangesMerged } from "./gitChanges";
-import { handleOceanMessage, warmSearchIndexes } from "./oceanMessages";
+import { handleOceanMessage } from "./oceanMessages";
 import {
   ProtoSourceConfig,
   collectProtoFiles,
@@ -372,27 +372,33 @@ export class ClientHost {
         lastError: this.source.lastError,
       },
     });
-    warmSearchIndexes(this.codeRoot(), this.workspaceRoot);
+    // 注意：这里**不要**同步预热 Excel / Docs / SQL 索引。
+    // 换一次 proto 目录就要把工作区里所有 xlsx / md / sql 重扫一遍，
+    // 目录大时会让「应用并刷新」明显卡住，而用户此刻通常只想看接口树。
+    // 各视图首次打开时自己会发 excelCatalog / docCatalog / sqlCatalog 请求，按需建索引。
   }
 
   private async loadFromDirectory(root: string): Promise<void> {
     const entries = await collectProtoFiles(root);
     this.log(`加载 ${root}，共 ${entries.length} 个 .proto`);
     const errors: { file: string; message: string }[] = [];
-    const files = [];
-    for (const entry of entries) {
+    // 并发读取 + 解析；串行 await 在几百个文件时会明显拖慢「应用并刷新」
+    const parsed = await Promise.all(entries.map(async (entry) => {
       try {
         const text = await fs.readFile(entry.path, "utf8");
-        files.push(parseProto(text, entry.path, entry.relPath));
+        return parseProto(text, entry.path, entry.relPath);
       } catch (error) {
         const message = error instanceof ProtoParseError || error instanceof Error
           ? error.message
           : String(error);
         errors.push({ file: entry.relPath, message });
         this.log(`${entry.relPath}: ${message}`);
+        return null;
       }
-    }
-    this.catalog = buildCatalog(files, errors);
+    }));
+    // 并发下错误顺序不固定，按路径排一下让输出稳定
+    errors.sort((a, b) => a.file.localeCompare(b.file));
+    this.catalog = buildCatalog(parsed.filter((item) => item !== null), errors);
   }
 }
 

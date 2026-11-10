@@ -16,7 +16,7 @@ import { collectCodeSymbols } from "./codeSymbols";
 import { buildCallGraph } from "./callGraph";
 import { excelCatalogMerged, excelDiff, excelPage, excelSearch, excelUpdateCell } from "./excelIndex";
 import { gitChangesMerged } from "./gitChanges";
-import { handleOceanMessage, warmSearchIndexes } from "./oceanMessages";
+import { handleOceanMessage } from "./oceanMessages";
 import { openSource } from "./panel";
 import { ProtoSourceConfig } from "./source";
 import { handleTemplates } from "./hostCore";
@@ -457,7 +457,8 @@ export class ClientPanel {
       source: this.sourceState,
       qr: qr.toString(),
     });
-    warmSearchIndexes(this.codeRoot(), vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || "");
+    // 不在 bootstrap 时预热 Excel / Docs / SQL 索引：每次刷新 proto 都要重扫整个工作区，
+    // 目录大时明显拖慢首屏。各视图打开时自己会请求对应 catalog，按需建索引即可。
   }
 
   private codeRoot(): string {

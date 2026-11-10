@@ -169,8 +169,16 @@
           window.dispatchEvent(new MessageEvent("message", { data }));
         } catch { /* ignore bad frames */ }
       });
-      socket.addEventListener("close", () => {
+      socket.addEventListener("close", (event) => {
         socket = null;
+        // 1009 = message too big：服务端单帧超限会强制断开。
+        // 静默重连会让用户以为「导入没反应」，这里明确提示一次。
+        if (event?.code === 1009) {
+          try {
+            setRespBadge("err", "上传内容过大被服务端拒绝：请按 Ctrl+F5 刷新页面后重试，"
+              + "或直接在「自定义源」填写本机目录路径（无需上传）");
+          } catch { /* badge 可能还没初始化 */ }
+        }
         if (!closed) setTimeout(connect, 1500);
       });
       socket.addEventListener("error", () => {
@@ -1871,9 +1879,27 @@
     return `<svg class="call-graph-svg" xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
   }
 
-  /** CLI：浏览器选目录并上传 .proto（宿主落盘后自动应用） */
+  /** 这些是二进制格式，必须先读 ArrayBuffer 再转 base64；用 text() 会损坏文件 */
+  const BINARY_UPLOAD_EXTS = /\.(xlsx|xlsm|xls|docx)$/i;
+  /** 随目录一起上传的资源类型（与宿主 UPLOAD_EXTS 保持一致） */
+  const UPLOADABLE_EXTS = /\.(proto|xlsx|xlsm|xls|csv|md|markdown|mdx|docx|txt|rst|adoc|html|sql)$/i;
+
+  /**
+   * 浏览器端兜底：用 `<input webkitdirectory>` 选目录并上传。
+   *
+   * 注意这是**慢路径**，只在拿不到本机绝对路径时用：
+   * 浏览器要把每个文件读进内存，再整包 JSON 塞进一条 WebSocket 消息。
+   * 正常情况请让服务端直接扫描（见 scanProtoDir / 「应用并刷新」）。
+   *
+   * 相对旧实现的改进：
+   * 1. 不再只挑 .proto —— Excel / Docs / SQL 也要一起传，否则那三个视图全空；
+   * 2. 读取由串行 `await file.text()` 改成并发 `Promise.all`；
+   * 3. 二进制（xlsx/docx）走 base64，避免文本读取损坏文件。
+   */
   async function pickProtoDirViaBrowser() {
     if (!vscode) return;
+    const hint = $("sourceDirHint");
+    if (hint) hint.textContent = "正在读取所选目录…（文件较多时会慢，建议直接在上方填绝对路径）";
     const files = [];
     let label = "";
     try {
@@ -1887,12 +1913,26 @@
           try {
             const list = Array.from(input.files || []);
             input.remove();
-            for (const file of list) {
-              if (!/\.proto$/i.test(file.name)) continue;
-              const rel = String(file.webkitRelativePath || file.name).replace(/\\/g, "/");
-              if (!label) label = rel.split("/")[0] || file.name;
-              files.push({ path: rel, content: await file.text() });
-            }
+            const picked = list
+              // 不再只挑 proto：Excel / Docs / SQL 也一起传
+              .filter((file) => UPLOADABLE_EXTS.test(file.name))
+              .map((file) => ({
+                file,
+                rel: String(file.webkitRelativePath || file.name).replace(/\\/g, "/"),
+              }));
+            if (!label && picked.length) label = picked[0].rel.split("/")[0] || picked[0].file.name;
+            // 并发读取，别一个个 await（串行是主要的卡顿来源）。
+            // 二进制必须先读 ArrayBuffer，否则 xlsx/docx 会被 UTF-8 解码破坏。
+            const contents = await Promise.all(picked.map(async (item) => {
+              if (BINARY_UPLOAD_EXTS.test(item.file.name)) {
+                const buf = new Uint8Array(await item.file.arrayBuffer());
+                return { base64: bytesToBase64(buf) };
+              }
+              return { content: await item.file.text() };
+            }));
+            picked.forEach((item, index) => {
+              files.push({ path: item.rel, ...contents[index] });
+            });
             resolve();
           } catch (error) {
             reject(error);
@@ -1911,14 +1951,50 @@
       return;
     }
     if (!files.length) {
-      setRespBadge("err", "目录中未找到 .proto 文件");
+      setRespBadge("err", "目录中未找到 .proto / Excel / 文档 / SQL 文件");
       return;
     }
-    setRespBadge("wait", `正在导入 ${files.length} 个 .proto…`);
-    vscode.postMessage({
-      type: "uploadProtoDir",
-      payload: { name: label || "proto", files },
+    // 分片上传：整包塞进一条 WS 消息会超过 ws 的 maxPayload，
+    // 服务端 receiver 直接报错断开（CLI 甚至会整个退出）。
+    // 按「总字节数」切片，每片远小于 maxPayload。
+    const uploadId = `up-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const CHUNK_BYTES = 2 * 1024 * 1024; // 2MB / 片
+    // 单个文件本身超过分片阈值时无法再切（一片就是一个文件），
+    // 服务端 maxPayload 是 64MB，这里提前拦住明显过大的单个文件。
+    const MAX_SINGLE = 48 * 1024 * 1024;
+    const tooLarge = files.find((file) => {
+      const size = file.base64 ? file.base64.length : String(file.content || "").length;
+      return size > MAX_SINGLE;
     });
+    if (tooLarge) {
+      setRespBadge("err", `文件过大（${tooLarge.path}）：请改用「自定义源」直接填写本机目录路径，无需上传`);
+      return;
+    }
+    const chunks = [];
+    let current = [];
+    let currentBytes = 0;
+    for (const file of files) {
+      const size = file.base64 ? file.base64.length : String(file.content || "").length;
+      if (current.length && currentBytes + size > CHUNK_BYTES) {
+        chunks.push(current);
+        current = [];
+        currentBytes = 0;
+      }
+      current.push(file);
+      currentBytes += size;
+    }
+    if (current.length) chunks.push(current);
+
+    setRespBadge("wait", `正在导入 ${files.length} 个文件（${chunks.length} 批）…`);
+    vscode.postMessage({ type: "uploadBegin", payload: { name: label || "proto", uploadId } });
+    chunks.forEach((batch, index) => {
+      vscode.postMessage({
+        type: "uploadProtoDirChunk",
+        payload: { uploadId, files: batch },
+      });
+      setRespBadge("wait", `正在导入 ${files.length} 个文件… (${index + 1}/${chunks.length})`);
+    });
+    vscode.postMessage({ type: "uploadEnd", payload: { uploadId } });
   }
 
   async function pickGhzViaBrowser() {
@@ -2184,6 +2260,8 @@
   // events
   initTheme();
   initOpenWithUi();
+  // 「上传目录」只在浏览器端有意义：扩展里走原生选目录对话框，不需要上传
+  $("uploadSourceDirBtn")?.classList.toggle("hidden", isVsCodeWebview);
   renderHistory();
   initSidebarCollapsed();
     initSidebarResize();
@@ -2218,6 +2296,36 @@
       vscode.postMessage({ type: "pickProtoDir" });
       return;
     }
+    if (!isVsCodeWebview) {
+      // CLI 跑在本机：输入框里已经是绝对路径，就让服务端直接扫描（零上传）
+      const existing = ($("sourceDirPath")?.value || "").trim();
+      const looksAbsolute = /^[a-zA-Z]:[\\/]/.test(existing)
+        || existing.startsWith("/")
+        || existing.startsWith("\\\\");
+      if (looksAbsolute) {
+        setRespBadge("wait", "正在扫描目录…");
+        vscode.postMessage({ type: "scanProtoDir", payload: { path: existing } });
+        return;
+      }
+      setRespBadge("wait", "浏览器无法获取本地路径");
+      if (els.sourceModal) {
+        const hint = $("sourceDirHint");
+        if (hint) {
+          hint.textContent = "浏览器出于安全限制拿不到文件夹的绝对路径。请直接把本机路径粘贴到上方输入框"
+            + "（如 D:\\proto），再点「浏览」或「应用并刷新」——CLI 会自己扫描，不需要上传。"
+            + "一定要用浏览器选目录，点旁边的「上传目录」（文件多时会慢）。";
+        }
+        openModal(els.sourceModal);
+      }
+      return;
+    }
+    // VS Code webview：走原生选目录对话框
+    closeModal(els.sourceModal);
+    setRespBadge("wait", "请选择目录…");
+    vscode.postMessage({ type: "pickProtoDir" });
+  });
+  $("uploadSourceDirBtn")?.addEventListener("click", () => {
+    if (!vscode) return;
     setRespBadge("wait", "请选择本地目录…");
     void pickProtoDirViaBrowser();
   });
@@ -3345,6 +3453,13 @@
       applyBootstrap(data);
       globalSearch.codeLoaded = false;
       globalSearch.codeItems = [];
+      // 「应用并刷新」后会收到新的 bootstrap：把「正在加载目录…」收尾掉，
+      // 否则徽章会一直停在加载中，看起来像卡住
+      if (state.source?.mode === "git") {
+        setRespBadge("ok", "Git 来源已更新");
+      } else if (state.source?.dirPath) {
+        setRespBadge("ok", "目录已更新");
+      }
     }
     // 扩展标题栏快速入口：切到指定视图并按文件定位
     if (data.type === "openClientView") {
@@ -3393,16 +3508,21 @@
       syncSourceModalUi();
       const dirHint = $("sourceDirHint");
       if (dirHint) {
-        dirHint.textContent = data.label
-          ? (data.count
-            ? `已选择：${data.label}（${data.count} 个 .proto），请点「应用并刷新」`
-            : `已选择：${data.label}，请点「应用并刷新」`)
-          : `已选择：${data.path}，请点「应用并刷新」`;
+        dirHint.textContent = data.local
+          // 服务端直接扫描：没有上传过程，路径就是本机真实目录
+          ? `已选中本机目录：${data.path}（CLI 会直接扫描，无需上传），请点「应用并刷新」`
+          : data.label
+            ? (data.count
+              ? `已选择：${data.label}（${data.count} 个 .proto），请点「应用并刷新」`
+              : `已选择：${data.label}，请点「应用并刷新」`)
+            : `已选择：${data.path}，请点「应用并刷新」`;
       }
       openModal(els.sourceModal);
-      setRespBadge("ok", data.count
-        ? `已导入 ${data.count} 个 .proto，请点应用并刷新`
-        : "已选择目录，请点应用并刷新");
+      setRespBadge("ok", data.local
+        ? "已选中本机目录，请点应用并刷新"
+        : (data.count
+          ? `已导入 ${data.count} 个 .proto，请点应用并刷新`
+          : "已选择目录，请点应用并刷新"));
     }
     if (data.type === "reopenSourceModal") {
       openSourceModal();
