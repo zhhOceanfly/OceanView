@@ -102,9 +102,12 @@ export class ClientHost {
       await this.loadFromDirectory(this.source.localPath);
       return;
     }
-    const root = this.source.dirPath?.trim() || this.workspaceRoot;
-    this.workspaceRoot = path.resolve(root);
-    await this.loadFromDirectory(this.workspaceRoot);
+    // 注意：不能把 workspaceRoot 改成 dirPath。
+    // dirPath 只是「Proto 扫描根」（浏览器上传目录 / 自定义目录），
+    // workspaceRoot 是用户最初的工作区，Excel / Docs / SQL / 环境文件都还在那里。
+    // 早先这里写了 this.workspaceRoot = resolve(root)，导致上传 proto 后
+    // 两个根变成同一个只有 .proto 的临时目录，db / excel / docs 全部扫不到。
+    await this.loadFromDirectory(this.codeRoot());
   }
 
   async handleMessage(message: {

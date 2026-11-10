@@ -95,35 +95,58 @@ npm run publish
 
 Cursor 默认走 [Open VSX](https://open-vsx.org/)，需单独发布（与 VS Code 商店无关）。
 
+认证有两条路，可并存但 **`OVSX_PAT` 优先级更高**（存在 PAT 时不会走 OIDC）：
+
+| 方式 | 用在哪 | 需要什么 |
+| --- | --- | --- |
+| Access Token（`OVSX_PAT`） | 首次发布、创建命名空间、本机手动 | `ovsxat_...` token |
+| Trusted Publishing（OIDC） | 之后全部 CI 发布 | 在 open-vsx.org 注册仓库 + workflow，**无需 Secret** |
+
+### 第一次发布（必须用 Token）
+
+Trusted Publisher 只能注册到**已存在且至少有一个 active 版本**的扩展上，所以第一次必须手动发：
+
 1. 登录 https://open-vsx.org → Profile **签署** Eclipse Open VSX Publisher Agreement  
 2. [Access Tokens](https://open-vsx.org/user-settings/tokens) 创建 Token（**只放在环境变量里，不要写进仓库**）  
-3. 本机（推荐 Node 20）：
+3. 本机（**Node 22+**，ovsx 1.x 要求）：
 
 ```bash
-nvm use 20.18.0
+nvm use 22
 export OVSX_PAT=ovsxat_你的token   # PowerShell: $env:OVSX_PAT="ovsxat_你的token"
 
+npm ci
 npm run openvsx:namespace          # 首次创建命名空间 zoceanfly（只需一次）
 npm run publish:openvsx            # 打包并发布到 Open VSX
 ```
 
-脚本说明见 [`scripts/openvsx-publish.js`](scripts/openvsx-publish.js)。发布后页面：  
+脚本说明见 [`scripts/openvsx-publish.js`](scripts/openvsx-publish.js)（有 `OVSX_PAT` 用 PAT，没有则尝试 OIDC）。发布后页面：  
 `https://open-vsx.org/extension/zoceanfly/oceanview`
 
-### GitHub Actions 自动发布
+### GitHub Actions：Trusted Publishing（推荐）
 
 工作流：[`.github/workflows/publish-openvsx.yml`](.github/workflows/publish-openvsx.yml)
 
-**1. 配置仓库密钥（一次性）**
+**1. 在 Open VSX 注册 Trusted Publisher（一次性，需已有首个版本）**
 
-1. 在 [Open VSX Access Tokens](https://open-vsx.org/user-settings/tokens) 创建 Token（需已签署 Publisher Agreement）
-2. 打开仓库 → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**
-3. Name 填 `OVSX_PAT`，Value 粘贴 token（形如 `ovsxat_...`）→ Add secret  
-   （不要写进代码或提交到 git）
+1. 打开 https://open-vsx.org/user-settings/trusted-publishers
+2. 选择命名空间 **`zoceanfly`**（必须是 owner，仅 contributor 不够）
+3. Provider 选 **GitHub Actions**，填：
 
-命名空间 `zoceanfly` 若尚未创建，先在本机执行一次 `npm run openvsx:namespace`（CI 不会自动创建）。
+| 字段 | 值 |
+| --- | --- |
+| Organization or User name | `zhhOceanfly` |
+| Repository name | `OceanView` |
+| Workflow filename | `publish-openvsx.yml`（只填文件名，含 `.yml`） |
+| Environment name | 留空（除非 job 里用了 GitHub environment） |
 
-**2. 触发发布**
+4. 确认保存。每个扩展只能有 **一个** Trusted Publisher；改仓库名 / workflow 文件名都要重新注册。
+
+**2. 删除 `OVSX_PAT` Secret（重要）**
+
+`--pat` / `OVSX_PAT` 的优先级**高于** OIDC。仓库里若还留着 `OVSX_PAT`，workflow 会继续按旧 token 发布而不是走 trusted publishing：  
+仓库 → **Settings** → **Secrets and variables** → **Actions** → 删除 `OVSX_PAT`。
+
+**3. 触发发布**
 
 任选其一（发布前先把根目录 `package.json` 的 `version` 升到目标版本并推送）。  
 **Tag 前缀与 npm / DBX 分开**，避免一次 push 触发多个发布：
@@ -139,7 +162,15 @@ npm run publish:openvsx            # 打包并发布到 Open VSX
 | 手动 | Actions → **Publish Open VSX** → **Run workflow** |
 | Tag | `git tag ext-v0.1.1 && git push origin ext-v0.1.1` |
 
-工作流会 `npm ci` → `npm run publish:openvsx`（打包 VSIX 并用密钥发布）。同一版本已存在时 Open VSX 会拒绝，需先升版本。
+工作流会 `npm ci` → `npm run package` → `ovsx publish --trusted-publishing`（OIDC 换 5 分钟短期 token，只对本扩展有效）。
+同一版本已存在时 Open VSX 会拒绝，需先升版本。
+
+**限制与坑**
+
+- 只能用 **GitHub 托管 runner**（self-hosted 不支持）
+- `id-token: write` 必须开；`ovsx` 需 **≥ 1.1.0**（本仓库 devDependency 已钉 `^1.4.0`），Node **≥ 22**
+- 若扩展的所有版本都被删光，注册会失效（页面仍显示，但换 token 时报 `No trusted publisher matches the presented token`）；重新发一个版本即恢复
+- 私有仓库注册会拿到一个 `registrationCode`，首次发布需传 `OVSX_REGISTRATION_CODE`
 
 Cursor 对 Open VSX 有镜像同步延迟（常见数小时）；也可在 Cursor 里用「从 VSIX 安装」。用完整 ID 搜索：`zoceanfly.oceanview`。
 
@@ -157,6 +188,8 @@ npm 组织：**`zhhoceanfly`**（与 VS Code Marketplace publisher `zoceanfly` �
 
 **1. 在 npm 绑定 Trusted Publisher（一次性）**
 
+> 前置：**包必须已存在于 npm 上**。`@zhhoceanfly/oceanview` 现在还没发布过（改名后是新包名），必须先在本机用 token 发一次 0.1.1，才能配置 Trusted Publisher。首次发布见下文「本机手动发布」。
+
 1. 打开包 Settings：https://www.npmjs.com/package/@zhhoceanfly/oceanview → **Settings** → **Trusted Publisher**
 2. 选 **GitHub Actions**，填写（须与仓库完全一致，区分大小写）：
 
@@ -165,9 +198,16 @@ npm 组织：**`zhhoceanfly`**（与 VS Code Marketplace publisher `zoceanfly` �
 | Organization or user | `zhhOceanfly`（你的 GitHub 用户/组织名） |
 | Repository | `OceanView` |
 | Workflow filename | `publish-npm-cli.yml`（只要文件名，含 `.yml`） |
-| Allowed actions | 勾选允许 **`npm publish`**（若界面有该项） |
+| Environment name | 留空（除非 job 用了 GitHub environment） |
+| Allowed actions | 至少勾 **`npm publish`** |
 
 3. 保存后 **2 天内**必须用该 workflow **成功发布一次**，否则配置过期需重建。
+
+也可用 CLI 配置（需账号已开 2FA、npm ≥ 11.15）：
+
+```bash
+npm trust github @zhhoceanfly/oceanview --repo zhhOceanfly/OceanView --file publish-npm-cli.yml --allow-publish
+```
 
 **2. 升版本并触发**
 
@@ -178,15 +218,16 @@ npm 组织：**`zhhoceanfly`**（与 VS Code Marketplace publisher `zoceanfly` �
 | 手动 | Actions → **Publish npm CLI** → **Run workflow** |
 | Tag | `git tag cli-v0.1.1 && git push origin cli-v0.1.1`（tag 名仅作触发，真正版本以 `packages/cli` 的 `version` 为准，当前 **0.1.1**） |
 
-工作流会 `npm ci` → `build:cli` → `npm publish ./packages/cli`。OIDC 由 `permissions.id-token: write` 提供，无需 Secret。
+工作流会 `npm ci` → `build:cli` → `npm publish ./packages/cli`。OIDC 由 `permissions.id-token: write` 提供，无需 Secret；不传 `NODE_AUTH_TOKEN`，npm 会自动走 OIDC 并生成 provenance。
+
+要求：**GitHub 托管 runner**、**Node ≥ 22.14**（workflow 用 24）、**npm CLI ≥ 11.5.1**（workflow 里会 `npm i -g npm@^11.5.1`）。workflow 还会先查 `npm view`，该版本已存在则跳过发布，避免 tag 重跑报错。
 
 **3. 备选：Granular Token（未配 Trusted Publisher 时）**
 
 1. npm → Access Tokens → **Granular** → 对该包 Read and write，并勾选 **Bypass 2FA**  
-2. 仓库 Settings → Secrets → Actions → 新建 `NPM_TOKEN`  
-3. 同一 workflow 会把 `NODE_AUTH_TOKEN` 设为该 Secret（OIDC 不可用时回退）
+2. 仓库 Settings → Secrets → Actions → 新建 `NPM_TOKEN`，并在 workflow 的 publish 步骤加 `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}`
 
-配好 Trusted Publisher 并验证成功后，建议在包 Settings → **Publishing access** 选「Require 2FA and disallow tokens」，并撤销不再需要的 publish token。
+注意：本仓库 workflow **默认不读 `NPM_TOKEN`**（纯 OIDC）。要回退到 token 发布需自行把该 env 加回去；配好 Trusted Publisher 后建议在包 Settings → **Publishing access** 选「Require 2FA and disallow tokens」，并撤销不再需要的 publish token。
 
 ### 本机手动发布（会触发浏览器 / OTP MFA）
 
@@ -214,6 +255,8 @@ npm run publish:cli
 ```
 
 等价于 `npm run build:cli` + `npm publish ./packages/cli --access public --registry https://registry.npmjs.org/`。
+
+**注意 Node 版本**：`npm publish` 在 Node 22.10 及更旧版本上可能因依赖升级报错，建议本机 `nvm use 22` 取最新补丁版或更直接用 **node 24**。
 
 **不要**在仓库根目录执行 `npm publish`：根包 `"private": true`。  
 正确包名是 **`@zhhoceanfly/oceanview`**（两个 `h`）。
@@ -258,6 +301,21 @@ npm run dev:cli -- --proto ./你的proto目录 --port 3920
 - 改 `src/` 或 `packages/cli/src` → 自动 `tsc` 并重启服务  
 - 开发时静态资源直连仓库 `client/`，不必再 `build:cli` 复制到 `public/`  
 - **正式发布前仍须** `npm run publish:cli`（或至少 `build:cli`），确保 `public/` / `dist/` 为最新产物
+
+### 安装运行
+```
+# 查看本地当前版本
+npm list -g @zhhoceanfly/protoview
+
+# 查看 npm 仓库里的最新版本
+npm view @zhhoceanfly/protoview version
+
+# 清除 npm 缓存
+npm cache clean --force
+
+# 或者直接安装指定版本（比如 0.1.6）
+npm i -g @zhhoceanfly/protoview@0.1.6
+```
 
 ## 图标资源
 

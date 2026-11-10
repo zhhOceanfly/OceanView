@@ -1,7 +1,18 @@
 # 发布 VS Code / Cursor 扩展到 Open VSX
-# 密钥：仓库 Settings → Secrets and variables → Actions → New repository secret
-#   Name:  OVSX_PAT
-#   Value: open-vsx.org → User Settings → Access Tokens 创建的 token（ovsxat_...）
+#
+# 认证：Trusted Publishing（OIDC，无需 OVSX_PAT Secret）
+#   1. open-vsx.org 登录（需是 publisher 命名空间的 owner，并已签署 Publisher Agreement）
+#   2. https://open-vsx.org/user-settings/trusted-publishers → 选命名空间 zoceanfly
+#      → 选 GitHub Actions，填：
+#         Organization or User name = zhhOceanfly
+#         Repository name          = OceanView
+#         Workflow filename        = publish-openvsx.yml
+#         Environment name         = 留空
+#   3. 前置条件：该扩展必须**已有一个 active 版本**。注册时若尚未发布过任何版本，
+#      注册会被拒绝，所以首次发布要先本机用 PAT 发（见 PUBLISH.md），再注册。
+#   4. 每个扩展只能有一个 Trusted Publisher；换 workflow/仓库名要重新注册。
+#
+# 注意：OVSX_PAT 若同时存在会**优先于** OIDC，迁移期请删除该 Secret。
 #
 # 触发（与 npm / DBX 分开，勿共用 tag）：
 #   - 手动：Actions → Publish Open VSX → Run workflow
@@ -17,9 +28,13 @@ on:
     tags:
       - "ext-v*"
 
+permissions:
+  contents: read
+  id-token: write # Trusted Publishing 换取短期 token 必须
+
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest # Trusted Publishing 只支持 GitHub 托管 runner
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,13 +42,26 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: npm
+          # ovsx >= 1.2 要求 Node >= 22
+          node-version: "24"
+          package-manager-cache: false
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Package and publish to Open VSX
-        env:
-          OVSX_PAT: ${{ secrets.OVSX_PAT }}
-        run: npm run publish:openvsx
+      # 断言 devDependencies 里的 ovsx 版本够新（--trusted-publishing 需要 >= 1.1.0）。
+      # 只读 package.json 不执行 CLI：ovsx 1.4 自带的 vsce 4 依赖 require(ESM)，
+      # 需要 Node >= 22.12 才能正常启动。
+      - name: Verify ovsx supports trusted publishing
+        run: >
+          node -e "const v=require('ovsx/package.json').version;
+          const [a,b]=v.split('.').map(Number);
+          console.log('ovsx', v);
+          if(a<1||(a===1&&b<1)){console.error('ovsx '+v+' 太旧，需要 >= 1.1.0');process.exit(1)}"
+
+      - name: Package VSIX
+        run: npm run package
+
+      - name: Publish to Open VSX (trusted publishing)
+        # 该脚本在没有 OVSX_PAT 时会自动加 --trusted-publishing
+        run: node scripts/openvsx-publish.js publish-trusted

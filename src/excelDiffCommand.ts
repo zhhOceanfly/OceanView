@@ -5,12 +5,13 @@ import { diffWorkbook, diffWorkbookByUris, DiffUri, WorkbookDiff } from "./excel
 /**
  * ExcelView 差异对比。
  *
- * 两种入口：
- * 1. 源码管理 / 编辑器右键命令：和 git HEAD 比；
- * 2. Git 侧边栏点开 Excel：VS Code 会用本扩展的两个自定义编辑器左右并排，
- *    两个 webview 各自只显示自己那一份，无法标出差异单元格。
- *    这里额外提供「ExcelView 差异对比」标签页，用一张 HTML 表同时呈现左右，
- *    变化的单元格高亮，读不到时给出明确提示。
+ * 入口：
+ * 1. 编辑器 / Source Control 右键命令：和 git HEAD 比；
+ * 2. 自定义编辑器顶部「差异对比」按钮（手动触发）；
+ * 3. 编辑器标题栏的 ExcelView 入口。
+ *
+ * Git 侧栏点开 Excel 时不再自动跳到这里 —— 只打开工作区文件本身，
+ * 方便直接编辑保存；要看差异由用户手动点「与 git 对比」。
  */
 const SCHEME = "oceanview-excel-diff";
 
@@ -56,26 +57,30 @@ export function registerExcelDiff(context: vscode.ExtensionContext): void {
       const working = vscode.Uri.file(uri.fsPath);
       await showExcelDiffByUris(uri, working);
     }),
-    // Git 里双击 Excel 时，VS Code 会先打开内置文本 diff（显示「二进制文件」），
-    // 这里监听标签变化，自动关掉那个标签，换成 ExcelView 差异页
+    // Git 里点开 Excel 时，VS Code 会先尝试用内置文本 diff 打开（对二进制文件只显示
+    // 「二进制文件」）。这里关掉那个 diff 标签，改成**直接打开工作区文件本身**
+    // （可正常双击编辑、Ctrl+S 保存）。需要对比时再手动点「与 git 对比」。
     vscode.window.tabGroups.onDidChangeTabs((event) => {
-      for (const tab of event.opened) void replaceBinaryDiffTab(tab);
+      for (const tab of event.opened) void openWorkingInsteadOfDiff(tab);
     }),
   );
 }
+
+/** Excel 文件的扩展名判断 */
+const EXCEL_EXT = /\.(xlsx|xlsm|xls|csv)$/i;
 
 /** 判断是不是 Excel 的 diff 标签（Git 打开二进制文件时产生的那两个） */
 function excelDiffUriOf(tab: vscode.Tab | undefined): vscode.Uri | null {
   if (!tab || !(tab.input instanceof vscode.TabInputTextDiff)) return null;
   const { original, modified } = tab.input;
   const target = String(modified.path || modified.fsPath || original.path || original.fsPath || "");
-  if (!/\.(xlsx|xlsm|xls|csv)$/i.test(target)) return null;
+  if (!EXCEL_EXT.test(target)) return null;
   // 历史版本的 scheme 可能是 git:（或者是我们自己的工作区版本）
   return modified.scheme === "file" ? modified : original;
 }
 
-/** 已处理过的文件，避免反复打开差异页 */
-const handled = new Set<string>();
+/** 正在接管的工作区文件（按 fsPath 去重，避免左右两侧各开一份） */
+const rehoming = new Set<string>();
 
 /** 关掉所有 Excel 的内置文本 diff 标签（Git 打开二进制文件时产生的左右两栏） */
 export async function closeExcelTextDiffs(): Promise<void> {
@@ -88,36 +93,49 @@ export async function closeExcelTextDiffs(): Promise<void> {
   } catch { /* 关不掉也继续 */ }
 }
 
-/** 这个文件当前是否正被 VS Code 当作 diff 打开（Git 侧点击就是这样） */
-export function isOpenAsDiff(uri: vscode.Uri): boolean {
-  const key = uri.toString();
-  const pathKey = uri.path.replace(/^\/+/, "");
-  const fsKey = (uri.fsPath || "").replace(/\\/g, "/").toLowerCase();
-  for (const group of vscode.window.tabGroups.all) {
-    for (const tab of group.tabs) {
-      if (!(tab.input instanceof vscode.TabInputTextDiff)) continue;
-      for (const target of [tab.input.original, tab.input.modified]) {
-        if (target.toString() === key) return true;
-        if (target.path.replace(/^\/+/, "") === pathKey) return true;
-        const targetFs = (target.fsPath || "").replace(/\\/g, "/").toLowerCase();
-        if (fsKey && targetFs === fsKey) return true;
-      }
-    }
+/**
+ * Git 侧点开 Excel 时的统一出口：不看点的是左（历史）还是右（工作区），
+ * 一律在当前标签位置打开**工作区最新文件**的 ExcelView，可直接编辑保存。
+ *
+ * 两个入口都会调到这里（同一次点击可能两个都触发，靠 rehoming 去重）：
+ * 1. `excelDiffCommand` 监听到 TabInputTextDiff（VS Code 用内置 diff 打开）；
+ * 2. `customViewers` 的 resolveCustomEditor 收到 git: 历史版本 URI / 自定义编辑器 diff。
+ */
+export async function openWorkingExcel(fsPath: string, column?: vscode.ViewColumn): Promise<void> {
+  if (!fsPath) return;
+  const working = vscode.Uri.file(fsPath);
+  const key = working.toString();
+  if (rehoming.has(key)) return;
+  rehoming.add(key);
+  setTimeout(() => rehoming.delete(key), 2000);
+
+  await closeExcelTextDiffs();
+  // 原列被关掉的标签回收后可能已不存在，退回当前列
+  const stillOpen = column
+    ? vscode.window.tabGroups.all.some((group) => group.viewColumn === column)
+    : false;
+  const viewColumn = stillOpen && column ? column : vscode.ViewColumn.Active;
+  try {
+    await vscode.commands.executeCommand("vscode.openWith", working, "oceanview.excelViewer", {
+      viewColumn,
+      preview: false,
+      preserveFocus: false,
+    });
+  } catch {
+    await vscode.commands.executeCommand("vscode.open", working, { viewColumn, preview: false });
   }
-  return false;
 }
 
-async function replaceBinaryDiffTab(tab: vscode.Tab): Promise<void> {
+/**
+ * Git 侧点开 Excel：关掉只剩「二进制文件」的 diff 标签，
+ * 在当前列打开工作区最新版本。想看差异再手动点「与 git 对比」。
+ */
+async function openWorkingInsteadOfDiff(tab: vscode.Tab): Promise<void> {
   const uri = excelDiffUriOf(tab);
   if (!uri) return;
-  const key = uri.toString();
-  if (handled.has(key)) return;
-  handled.add(key);
-  // 处理完就释放，下次再次打开还能接管
-  setTimeout(() => handled.delete(key), 6000);
-  await closeExcelTextDiffs();
-  const working = vscode.Uri.file(uri.fsPath);
-  await showExcelDiffByUris(uri.scheme === "file" ? working : uri, working);
+  const column = vscode.window.tabGroups.all
+    .find((group) => group.tabs.includes(tab))?.viewColumn;
+  await openWorkingExcel(uri.fsPath, column);
 }
 
 /** 从命令参数 / 当前编辑器 / Source Control 选中项解析出 xlsx 绝对路径 */
@@ -238,13 +256,12 @@ async function showExcelDiffByUris(
   await openDiffTab(diff, name, column);
 }
 
-/** 供自定义编辑器调用：直接渲染「历史 vs 工作区」对比页（复用同一个面板） */
+/** 打开「历史 vs 工作区」对比页（复用同一个面板），供外部手动触发 */
 export async function openExcelCompare(
   history: vscode.Uri,
   working: vscode.Uri,
   column?: vscode.ViewColumn,
 ): Promise<void> {
-  await closeExcelTextDiffs();
   await showExcelDiffByUris(history, working, column);
 }
 

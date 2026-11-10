@@ -2,24 +2,22 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { docTextFromBuffer } from "./docIndex";
 import { parseWorkbookBuffer, WorkbookSheetData } from "./excelIndex";
-import { closeExcelTextDiffs, isOpenAsDiff, openExcelCompare } from "./excelDiffCommand";
+import { openWorkingExcel } from "./excelDiffCommand";
 
 /**
  * Excel / Docs 的自定义编辑器（Custom Editor）。
  * 关键点：
- * 1. 直接用 VS Code 的 document 内容（支持 git: 只读旧版本），不依赖目录扫描，
- *    所以 Git 左右对比里也能正常渲染；
- * 2. Excel 单元格可直接双击编辑，保存走 WorkspaceEdit 写回原文件；
- * 3. 顶部「在 ExcelView / DocsView Client 中编辑」会带文件路径跳到 webview 并定位。
+ * 1. 直接用 VS Code 的 document 内容（支持 git: 只读旧版本），不依赖目录扫描；
+ * 2. Excel 单元格双击进入编辑，回车 / 失焦提交，Ctrl+S 或「保存」按钮落盘，
+ *    保存后标签页不再显示未保存圆点，标题栏给出「已保存 时间」提示；
+ * 3. 从 Git 侧栏点开 Excel 只打开当前文件，**不自动**切到差异对比，
+ *    需要对比时手动点顶部「差异对比」。
  */
 
 async function readDocumentBytes(document: vscode.CustomDocument & { uri: vscode.Uri }): Promise<Buffer> {
   return (await readUriBytes(document.uri)) || Buffer.alloc(0);
 }
 void readDocumentBytes;
-
-/** 防止 Git diff 的左右两栏各触发一次对比页 */
-let compareOpening = false;
 
 class ExcelViewEditorProvider implements vscode.CustomEditorProvider {
   public static readonly viewType = "oceanview.excelViewer";
@@ -47,24 +45,14 @@ class ExcelViewEditorProvider implements vscode.CustomEditorProvider {
     return new ExcelDocument(uri, bytes);
   }
 
-  private async readBytes(uri: vscode.Uri): Promise<Buffer> {
-    return (await readUriBytes(uri)) || Buffer.alloc(0);
-  }
-
-  /** 读工作区里同一路径的当前版本，用于和 git 历史版本对比 */
-  private async readWorking(fsPath: string): Promise<Buffer | null> {
-    if (!fsPath) return null;
-    const fs = await import("fs/promises");
-    try {
-      return await fs.readFile(fsPath);
-    } catch {
-      return null;
-    }
-  }
-
   public async saveCustomDocument(document: ExcelDocument, cancellation: vscode.CancellationToken): Promise<void> {
     void cancellation;
     await document.save();
+    // 保存完成给 webview 回一条明确反馈（顶部「已保存 时间」），否则用户不知道有没有写盘
+    const panel = ExcelViewEditorProvider.panels.get(document.uri.toString());
+    if (panel) {
+      void panel.webview.postMessage({ type: "saved", at: document.savedAt || Date.now() });
+    }
   }
 
   public async saveCustomDocumentAs(document: ExcelDocument, destination: vscode.Uri): Promise<void> {
@@ -73,7 +61,7 @@ class ExcelViewEditorProvider implements vscode.CustomEditorProvider {
 
   public async revertCustomDocument(document: ExcelDocument, cancellation: vscode.CancellationToken): Promise<void> {
     void cancellation;
-    document.revert();
+    await document.revert();
   }
 
   public async backupCustomDocument(
@@ -86,25 +74,12 @@ class ExcelViewEditorProvider implements vscode.CustomEditorProvider {
 
   public async resolveCustomEditor(document: ExcelDocument, panel: vscode.WebviewPanel): Promise<void> {
     panel.webview.options = { enableScripts: true };
-    // 在 Git 里"比较"打开时会走到这里：VS Code 已为左右两栏各建了一个自定义编辑器
-    // 标签（旧版本 + 工作区）。继续各自渲染会出现重复表格，所以直接关掉这两栏，
-    // 换成一张"对比状态"的差异页。
-    // 普通双击打开不受影响：那种情况标签是 TabInputCustom，isOpenAsDiff 返回 false。
-    if (document.uri.scheme !== "file" || isOpenAsDiff(document.uri)) {
-      const working = vscode.Uri.file(document.uri.fsPath);
-      const history = document.uri.scheme === "file" ? working : document.uri;
-      // 左右两栏会各调一次 resolveCustomEditor，用标记保证只开一个对比页
-      if (!compareOpening) {
-        compareOpening = true;
-        setTimeout(() => { compareOpening = false; }, 1500);
-        panel.dispose();
-        // 在当前活动列打开，让对比页直接顶替掉这个标签
-        const column = vscode.window.tabGroups.activeTabGroup?.viewColumn
-          || vscode.ViewColumn.Active;
-        await openExcelCompare(history, working, column);
-      } else {
-        panel.dispose();
-      }
+    // Git 侧栏点开 Excel 时，VS Code 会把它当内置 diff 打开（二进制只剩一行提示），
+    // 或者用 git: 历史版本 URI 建一个只读自定义编辑器。
+    // 这里既不渲染历史版本、也不自动跳差异页：关掉 diff，把当前标签换成
+    // **工作区最新文件**的 ExcelView，可直接双击编辑、Ctrl+S 保存。
+    if (document.uri.scheme !== "file" || isOpenInDiff(document.uri)) {
+      await rehomeToWorking(document.uri.fsPath, panel);
       return;
     }
     const render = () => {
@@ -133,7 +108,7 @@ class ExcelViewEditorProvider implements vscode.CustomEditorProvider {
         const name = String(message.sheet || "");
         if (name) {
           sheetMemory.set(document.uri.toString(), name);
-          panel.webview.html = renderExcelHtml(document);
+          render();
         }
         return;
       }
@@ -141,9 +116,42 @@ class ExcelViewEditorProvider implements vscode.CustomEditorProvider {
         const row = Number(message.row);
         const col = Number(message.col);
         if (!Number.isFinite(row) || !Number.isFinite(col)) return;
-        const ok = document.setCell(String(message.sheet || ""), row, col, String(message.value ?? ""));
-        if (ok) panel.webview.html = renderExcelHtml(document);
-        panel.webview.postMessage({ type: "cellSaved", ok, row, col });
+        const entry = document.editCell(String(message.sheet || ""), row, col, String(message.value ?? ""));
+        if (!entry) {
+          panel.webview.postMessage({ type: "cellSaved", ok: true, row, col, dirty: document.isDirty() });
+          return;
+        }
+        // 通知 VS Code 文档已修改：标签出现未保存圆点，Ctrl+S 才会走 saveCustomDocument
+        this.changed.fire({
+          document,
+          undo: () => {
+            document.undoEdit();
+            render();
+          },
+          redo: () => {
+            document.redoEdit();
+            render();
+          },
+        });
+        panel.webview.postMessage({
+          type: "cellSaved",
+          ok: true,
+          row,
+          col,
+          dirty: document.isDirty(),
+          editCount: document.editCount(),
+        });
+        return;
+      }
+      if (message.type === "saveNow") {
+        // 走 VS Code 的保存链路，标签的未保存圆点才会一起清掉；
+        // 万一当前活动编辑器不是这个面板（焦点被别处抢走），直接落盘兜底。
+        await vscode.commands.executeCommand("workbench.action.files.save");
+        if (document.isDirty()) {
+          await this.saveCustomDocument(document, new vscode.CancellationTokenSource().token);
+        }
+        void panel.webview.postMessage({ type: "saved", at: document.savedAt || Date.now() });
+        return;
       }
     });
   }
@@ -330,7 +338,38 @@ async function openInClient(view: "excel" | "docs", file: string): Promise<void>
   await vscode.commands.executeCommand(command, vscode.Uri.file(file));
 }
 
+/**
+ * 该 URI 是否正被 VS Code 当作 diff 的一侧打开（Git 侧点击就是这种情况）。
+ * 左右两侧都算，因为两侧都会进 resolveCustomEditor。
+ */
+function isOpenInDiff(uri: vscode.Uri): boolean {
+  const key = uri.toString();
+  return vscode.window.tabGroups.all.some((group) => group.tabs.some((tab) => {
+    if (!(tab.input instanceof vscode.TabInputTextDiff)) return false;
+    return tab.input.original.toString() === key || tab.input.modified.toString() === key;
+  }));
+}
+
+/**
+ * 把「Git 历史版本 / diff 一侧」的自定义编辑器换成工作区文件的正常编辑器。
+ * 在同一个标签列打开并关闭原面板，视觉上就是「点了哪一侧都只是打开最新文件」。
+ */
+async function rehomeToWorking(fsPath: string, panel: vscode.WebviewPanel): Promise<void> {
+  const column = panel.viewColumn || vscode.ViewColumn.Active;
+  panel.dispose();
+  await openWorkingExcel(fsPath, column);
+}
+
 export { openInClient };
+
+/** 一次单元格改动：before/after 用于撤销与重做 */
+interface CellEdit {
+  sheet: string;
+  row: number;
+  col: number;
+  before: string;
+  after: string;
+}
 
 /** Excel 文档模型：持有内存中的工作表，改动后写回磁盘 */
 class ExcelDocument implements vscode.CustomDocument {
@@ -339,7 +378,11 @@ class ExcelDocument implements vscode.CustomDocument {
   private sheetNames: string[] = [];
   public get sheetNameList(): string[] { return this.sheetNames.slice(); }
   private sheets = new Map<string, WorkbookSheetData>();
-  private dirty = false;
+  /** 最近一次成功写盘的时间戳（ms），用于顶部「已保存」提示 */
+  public savedAt = 0;
+  /** 未保存的单元格改动，支撑撤销 / 重做与脏状态 */
+  private undoStack: CellEdit[] = [];
+  private redoStack: CellEdit[] = [];
 
   public constructor(uri: vscode.Uri, buffer: Buffer) {
     this.uri = uri;
@@ -363,23 +406,77 @@ class ExcelDocument implements vscode.CustomDocument {
   }
 
   public isDirty(): boolean {
-    return this.dirty;
+    return this.undoStack.length > 0;
   }
 
-  /** 设置单元格；行号是 Excel 的 1 基行号 */
-  public setCell(sheetName: string, row: number, col: number, value: string): boolean {
+  /** 未保存的改动数量 */
+  public editCount(): number {
+    return this.undoStack.length;
+  }
+
+  /** 未保存改动涉及的单元格（行、列），用于重新渲染后仍高亮 */
+  public editedCells(): Array<{ row: number; col: number }> {
+    return this.undoStack.map((entry) => ({ row: entry.row, col: entry.col }));
+  }
+
+  /** 底层写入：只改内存，不记撤销栈。行号是 Excel 的 1 基行号 */
+  private setCell(sheetName: string, row: number, col: number, value: string): boolean {
     const sheet = this.sheet(sheetName);
     if (!sheet) return false;
     const rowIndex = row - 1 - (sheet.rowOffset || 0);
     if (rowIndex < 0 || rowIndex >= sheet.rows.length) return false;
     while (sheet.rows[rowIndex].length <= col) sheet.rows[rowIndex].push("");
     sheet.rows[rowIndex][col] = value;
-    this.dirty = true;
     return true;
   }
 
+  /** 读取某单元格当前值 */
+  public cellValue(sheetName: string, row: number, col: number): string {
+    const sheet = this.sheet(sheetName);
+    if (!sheet) return "";
+    const rowIndex = row - 1 - (sheet.rowOffset || 0);
+    const line = sheet.rows[rowIndex];
+    return line ? (line[col] ?? "") : "";
+  }
+
+  /** 用户改动一个单元格：记入撤销栈并标脏；值没变则返回 null */
+  public editCell(sheetName: string, row: number, col: number, value: string): CellEdit | null {
+    const before = this.cellValue(sheetName, row, col);
+    if (before === value) return null;
+    if (!this.setCell(sheetName, row, col, value)) return null;
+    const entry: CellEdit = { sheet: sheetName, row, col, before, after: value };
+    this.undoStack.push(entry);
+    this.redoStack.length = 0;
+    return entry;
+  }
+
+  public undoEdit(): CellEdit | null {
+    const entry = this.undoStack.pop();
+    if (!entry) return null;
+    this.setCell(entry.sheet, entry.row, entry.col, entry.before);
+    this.redoStack.push(entry);
+    return entry;
+  }
+
+  public redoEdit(): CellEdit | null {
+    const entry = this.redoStack.pop();
+    if (!entry) return null;
+    this.setCell(entry.sheet, entry.row, entry.col, entry.after);
+    this.undoStack.push(entry);
+    return entry;
+  }
+
+  /** 按扩展名决定写回格式，避免把 .csv/.xls 覆盖成 xlsx 二进制 */
+  private bookType(): "xlsx" | "xlsm" | "xls" | "csv" {
+    const ext = path.extname(this.uri.fsPath || this.uri.path).toLowerCase();
+    if (ext === ".csv") return "csv";
+    if (ext === ".xls") return "xls";
+    if (ext === ".xlsm") return "xlsm";
+    return "xlsx";
+  }
+
   public async save(): Promise<void> {
-    if (!this.dirty) return;
+    if (!this.undoStack.length) return;
     const XLSX = await import("xlsx");
     const book = XLSX.read(this.buffer, { type: "buffer", cellDates: true, cellNF: true });
     for (const name of this.sheetNames) {
@@ -397,11 +494,18 @@ class ExcelDocument implements vscode.CustomDocument {
         }
       }
     }
-    const out = XLSX.write(book, { type: "buffer", bookType: "xlsx" });
+    const bookType = this.bookType();
+    const out = XLSX.write(book, { type: "buffer", bookType });
+    // CSV 输出会带 UTF-8 BOM，某些工具会把首个表头读成 \ufeffname，这里去掉
+    const bytes = bookType === "csv"
+      ? Buffer.from(out.toString("utf8").replace(/^\uFEFF/, ""), "utf8")
+      : (out as Buffer);
     const fs = await import("fs/promises");
-    await fs.writeFile(this.uri.fsPath, out);
-    this.buffer = out;
-    this.dirty = false;
+    await fs.writeFile(this.uri.fsPath, bytes);
+    this.buffer = bytes;
+    this.undoStack.length = 0;
+    this.redoStack.length = 0;
+    this.savedAt = Date.now();
   }
 
   public async saveAs(destination: vscode.Uri): Promise<void> {
@@ -409,9 +513,15 @@ class ExcelDocument implements vscode.CustomDocument {
     await fs.writeFile(destination.fsPath, this.buffer);
   }
 
-  public revert(): void {
+  /** 丢弃改动并重新从磁盘读回，保证撤销/回退后内存与文件一致 */
+  public async revert(): Promise<void> {
+    try {
+      const fs = await import("fs/promises");
+      this.buffer = await fs.readFile(this.uri.fsPath);
+    } catch { /* 读不到就退回上次保存的内容 */ }
     this.load(this.buffer);
-    this.dirty = false;
+    this.undoStack.length = 0;
+    this.redoStack.length = 0;
   }
 
   public dispose(): void { /* 无资源需要释放 */ }
@@ -526,13 +636,17 @@ function renderExcelHtml(document: ExcelDocument): string {
   const head = sheet
     ? `<tr><th class="rowno">#</th>${Array.from({ length: width }, (_, i) => `<th>${columnLetter(i)}</th>`).join("")}</tr>`
     : "";
+  // 重新渲染（切 Sheet）后仍要保留未保存高亮，所以先把改动单元格收集起来
+  const editedKeys = new Set(document.editedCells().map((item) => `${item.row}:${item.col}`));
   const body = sheet
     ? sheet.rows.map((row, index) => {
       const excelRow = index + 1 + (sheet.rowOffset || 0);
       const cells = Array.from({ length: width }, (_, c) => {
         const value = row[c] ?? "";
         const cls = readonly ? "" : " editable";
-        return `<td class="${cls.trim()}" data-row="${excelRow}" data-col="${c}"${readonly ? "" : ' contenteditable="true" spellcheck="false"'}>${escapeHtml(value)}</td>`;
+        const dirty = !readonly && editedKeys.has(`${excelRow}:${c}`) ? " dirty-cell" : "";
+        // 不加 contenteditable：单击只选中，双击才进入编辑，避免误改
+        return `<td class="${cls.trim()}${dirty}" data-row="${excelRow}" data-col="${c}">${escapeHtml(value)}</td>`;
       }).join("");
       return `<tr><td class="rowno">${excelRow}</td>${cells}</tr>`;
     }).join("")
@@ -541,11 +655,22 @@ function renderExcelHtml(document: ExcelDocument): string {
     ? `<table><thead>${head}</thead><tbody>${body}</tbody></table>`
     : `<div class="empty">这个文件里没有可显示的 Sheet。</div>`;
   return `<!DOCTYPE html><html><head><meta charset="utf-8" />
-    <style>${baseStyles()}</style></head><body>
+    <style>${baseStyles()}
+      .bar .save-state { font-size: 11px; color: var(--vscode-descriptionForeground); }
+      .bar .save-state.dirty { color: var(--vscode-editorWarning-foreground, #d18616); font-weight: 600; }
+      .bar .save-state.done { color: var(--vscode-testing-iconPassed, #3fb950); font-weight: 600; }
+      button[disabled] { opacity: .45; cursor: default; }
+      td.editable { cursor: cell; }
+      td.editable.is-selected { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
+      td.editable[contenteditable="true"] { background: var(--vscode-editor-selectionBackground); outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
+      td.editable.dirty-cell { background: rgba(209, 134, 22, .22); }
+    </style></head><body>
     <div class="bar">
       <strong>${escapeHtml(path.basename(document.uri.fsPath || document.uri.path))}</strong>
-      <span class="hint">${sheet ? `${sheet.rows.length} 行` : ""}${readonly ? " · 只读（Git 历史版本）" : " · 双击单元格可直接修改"}</span>
+      <span class="hint">${sheet ? `${sheet.rows.length} 行` : ""}${readonly ? " · 只读（Git 历史版本）" : " · 双击单元格编辑，回车确认，Ctrl+S 保存"}</span>
       <span class="spacer"></span>
+      <span class="save-state" id="saveState"></span>
+      ${readonly ? "" : '<button type="button" data-save disabled title="保存到磁盘（Ctrl+S）">保存</button>'}
       ${readonly ? "" : '<button type="button" data-diff-head title="与 git HEAD 版本对比，高亮变化的单元格">与 git 对比</button>'}
       <button class="primary" type="button" data-open-client>在 ExcelView Client 中编辑</button>
     </div>
@@ -556,9 +681,85 @@ function renderExcelHtml(document: ExcelDocument): string {
         try { return acquireVsCodeApi(); } catch (e) { return { postMessage: () => {}, getState: () => ({}), setState: () => {} }; }
       })();
       const uriKey = ${JSON.stringify(document.uri.toString())};
+      const readonly = ${readonly ? "true" : "false"};
       const state = vscode.getState() || {};
       state.sheet = state.sheet || ${JSON.stringify(activeName)};
       vscode.setState(state);
+
+      // ===== 保存状态提示 =====
+      const saveBtn = document.querySelector("[data-save]");
+      const saveStateEl = document.getElementById("saveState");
+      let dirtyCount = ${document.editCount()};
+      const dirtyCells = new Set();
+      for (const cell of document.querySelectorAll("td.dirty-cell")) {
+        dirtyCells.add(cell.getAttribute("data-row") + ":" + cell.getAttribute("data-col"));
+      }
+      function paintSaveState(kind, text) {
+        if (!saveStateEl) return;
+        saveStateEl.className = "save-state" + (kind ? " " + kind : "");
+        saveStateEl.textContent = text || "";
+      }
+      function paintDirty(count) {
+        dirtyCount = Number(count) || 0;
+        if (saveBtn) {
+          saveBtn.disabled = dirtyCount === 0;
+          saveBtn.textContent = dirtyCount ? "保存 (" + dirtyCount + ")" : "保存";
+        }
+        paintSaveState(dirtyCount ? "dirty" : "", dirtyCount ? "未保存 " + dirtyCount + " 处修改" : "");
+      }
+      paintDirty(dirtyCount);
+
+      function markDirtyCell(cell) {
+        if (!cell) return;
+        dirtyCells.add(cell.getAttribute("data-row") + ":" + cell.getAttribute("data-col"));
+        cell.classList.add("dirty-cell");
+      }
+
+      // 单元格：单击选中，双击才进入编辑；回车 / 失焦提交，Esc 还原
+      let editing = null;
+      let selected = null;
+
+      function selectCell(cell) {
+        if (selected === cell) return;
+        if (selected) selected.classList.remove("is-selected");
+        selected = cell;
+        if (cell) cell.classList.add("is-selected");
+      }
+      function beginEdit(cell) {
+        if (!cell || readonly) return;
+        selectCell(cell);
+        if (cell.getAttribute("contenteditable") === "true") return;
+        editing = { cell, before: cell.textContent || "" };
+        cell.setAttribute("contenteditable", "true");
+        cell.setAttribute("spellcheck", "false");
+        cell.focus();
+        // 光标落到末尾，避免双击后内容被整段选中导致误删
+        const range = document.createRange();
+        range.selectNodeContents(cell);
+        range.collapse(false);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      }
+      function endEdit(commit) {
+        const current = editing;
+        if (!current) return;
+        editing = null;
+        const cell = current.cell;
+        const value = cell.textContent || "";
+        cell.removeAttribute("contenteditable");
+        if (!commit) cell.textContent = current.before;
+        if (!commit || value === current.before) return;
+        markDirtyCell(cell);
+        vscode.postMessage({
+          type: "editCell",
+          sheet: state.sheet,
+          row: Number(cell.getAttribute("data-row")),
+          col: Number(cell.getAttribute("data-col")),
+          value,
+        });
+      }
+
       document.addEventListener("click", (event) => {
         if (event.target.closest("[data-open-client]")) {
           vscode.postMessage({ type: "openClient" });
@@ -568,54 +769,131 @@ function renderExcelHtml(document: ExcelDocument): string {
           vscode.postMessage({ type: "diffHead" });
           return;
         }
+        if (event.target.closest("[data-save]")) {
+          endEdit(true);
+          vscode.postMessage({ type: "saveNow" });
+          return;
+        }
         const tab = event.target.closest("[data-sheet]");
         if (tab) {
+          endEdit(true);
           state.sheet = tab.getAttribute("data-sheet") || "";
           vscode.setState(state);
           vscode.postMessage({ type: "selectSheet", sheet: state.sheet });
+          return;
         }
+        // 点到表格外面就收起选中
+        const cell = event.target.closest("td.editable");
+        if (!cell) {
+          selectCell(null);
+          return;
+        }
+        if (editing && editing.cell !== cell) endEdit(true);
+        selectCell(cell);
       });
-      // 单元格：回车 / 失焦提交，Esc 还原
-      let editing = null;
-      document.addEventListener("focusin", (event) => {
+      document.addEventListener("dblclick", (event) => {
         const cell = event.target.closest("td.editable");
         if (!cell) return;
-        editing = { cell, before: cell.textContent || "" };
+        event.preventDefault();
+        beginEdit(cell);
       });
       document.addEventListener("keydown", (event) => {
-        const cell = event.target.closest?.("td.editable");
-        if (!cell) return;
+        // 全局 Ctrl+S：任何位置都能存（先提交正在编辑的单元格）
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+          event.preventDefault();
+          endEdit(true);
+          vscode.postMessage({ type: "saveNow" });
+          return;
+        }
+        // 没在编辑时的键盘导航：方向键移动选中，回车 / F2 进入编辑
+        if (!editing) {
+          const cell = selected;
+          if (!cell) return;
+          if (event.key === "Enter" || event.key === "F2") {
+            event.preventDefault();
+            beginEdit(cell);
+            return;
+          }
+          const step = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }[event.key];
+          if (step) {
+            event.preventDefault();
+            const row = Number(cell.getAttribute("data-row")) + step[0];
+            const col = Number(cell.getAttribute("data-col")) + step[1];
+            const next = document.querySelector(
+              'td.editable[data-row="' + row + '"][data-col="' + col + '"]',
+            );
+            if (next) {
+              selectCell(next);
+              next.scrollIntoView({ block: "nearest", inline: "nearest" });
+            }
+          }
+          if (event.key === "Delete" || event.key === "Backspace") {
+            event.preventDefault();
+            beginEdit(cell);
+            cell.textContent = "";
+            endEdit(true);
+          }
+          return;
+        }
+        const cell = editing.cell;
         if (event.key === "Enter") {
           event.preventDefault();
-          cell.blur();
+          const before = cell.getAttribute("data-row");
+          endEdit(true);
+          // 回车后下移一格，和 Excel 一致
+          const next = document.querySelector(
+            'td.editable[data-row="' + (Number(before) + 1) + '"][data-col="' + cell.getAttribute("data-col") + '"]',
+          );
+          if (next) selectCell(next);
+          return;
+        }
+        if (event.key === "Tab") {
+          event.preventDefault();
+          const col = Number(cell.getAttribute("data-col"));
+          const row = cell.getAttribute("data-row");
+          endEdit(true);
+          const next = document.querySelector(
+            'td.editable[data-row="' + row + '"][data-col="' + (col + (event.shiftKey ? -1 : 1)) + '"]',
+          );
+          if (next) selectCell(next);
+          return;
         }
         if (event.key === "Escape") {
-          if (editing && editing.cell === cell) cell.textContent = editing.before;
-          cell.blur();
+          event.preventDefault();
+          endEdit(false);
         }
       });
       document.addEventListener("focusout", (event) => {
-        const cell = event.target.closest?.("td.editable");
-        if (!cell || !editing || editing.cell !== cell) return;
-        const value = cell.textContent || "";
-        const before = editing.before;
-        editing = null;
-        if (value === before) return;
-        vscode.postMessage({
-          type: "editCell",
-          sheet: state.sheet,
-          row: Number(cell.getAttribute("data-row")),
-          col: Number(cell.getAttribute("data-col")),
-          value,
-        });
+        if (!editing) return;
+        if (event.target === editing.cell) endEdit(true);
       });
       window.addEventListener("message", (event) => {
         const data = event.data;
-        if (data?.type === "cellSaved" && !data.ok) console.warn("保存单元格失败");
+        if (data?.type === "cellSaved") {
+          if (!data.ok) {
+            console.warn("保存单元格失败");
+            return;
+          }
+          paintDirty(data.editCount ?? dirtyCount);
+          return;
+        }
+        if (data?.type === "saved") {
+          dirtyCells.clear();
+          for (const cell of document.querySelectorAll("td.dirty-cell")) cell.classList.remove("dirty-cell");
+          paintDirty(0);
+          const at = data.at ? new Date(data.at) : new Date();
+          const text = at.toLocaleTimeString("zh-CN", { hour12: false });
+          paintSaveState("done", "已保存 " + text);
+          setTimeout(() => {
+            if (dirtyCount === 0 && saveStateEl?.classList.contains("done")) paintSaveState("", "");
+          }, 4000);
+          return;
+        }
       });
       // 滚轮直达内容区，避免被 webview 外层吞掉
       document.querySelector(".wrap")?.addEventListener("wheel", (e) => e.stopPropagation(), { passive: true });
       void uriKey;
+      void readonly;
     </script>
   </body></html>`;
 }
@@ -635,7 +913,6 @@ function columnLetter(index: number): string {
   return out;
 }
 
-/** Git 历史版本标签：左右并排对比，变化的单元格高亮 */
 /** 单个版本（Git 历史 或 工作区）的只读表格；git 侧额外给「与 git 对比」入口 */
 function renderVersionHtml(document: ExcelDocument, label: string): string {
   const names = document.sheetNameList;

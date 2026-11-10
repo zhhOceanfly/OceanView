@@ -9,6 +9,7 @@ interface CliArgs {
   open: boolean;
   showGoogle: boolean;
   help: boolean;
+  version: boolean;
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -21,10 +22,12 @@ function parseArgs(argv: string[]): CliArgs {
     open: process.env.OCEANVIEW_DEV !== "1",
     showGoogle: false,
     help: false,
+    version: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "-h" || a === "--help") args.help = true;
+    else if (a === "-v" || a === "-V" || a === "--version") args.version = true;
     else if (a === "--proto" || a === "-p") args.proto = path.resolve(argv[++i] || ".");
     else if (a === "--git" || a === "-g") args.git = argv[++i] || "";
     else if (a === "--branch" || a === "-b") args.branch = argv[++i] || "main";
@@ -61,12 +64,29 @@ Examples:
   oceanview
   oceanview --proto ./api
   oceanview --git https://github.com/org/repo.git --branch main
+  oceanview -V              # 打印版本
   OCEANVIEW_EDITOR=cursor oceanview
 `);
 }
 
+function printVersion(): void {
+  // 从发布包里的 package.json 读，保证与 npm 上的版本一致
+  let version = "unknown";
+  try {
+    // dist/cli.js → ../package.json
+    version = String(require("../package.json").version || "unknown");
+  } catch {
+    /* 读不到就保持 unknown */
+  }
+  console.log(version);
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
+  if (args.version) {
+    printVersion();
+    return;
+  }
   if (args.help) {
     printHelp();
     return;

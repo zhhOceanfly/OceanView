@@ -497,7 +497,8 @@
     meta.classList.toggle("is-error", isError);
   }
 
-  function applyExcelUpdate(result) {    if (!result) return;
+  function applyExcelUpdate(result) {
+    if (!result) return;
     if (!result.ok) {
       setExcelStatus(`保存失败：${result.error || "未知错误"}`, true);
       return;
@@ -507,7 +508,7 @@
       applyExcelPage(result.page);
       void keepFocus;
     }
-    setExcelStatus("已保存");
+    setExcelStatus(`已保存 · ${new Date().toLocaleTimeString("zh-CN", { hour12: false })}`);
   }
 
   function applyExcelSearch(hits) {

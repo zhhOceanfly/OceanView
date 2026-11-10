@@ -1,16 +1,15 @@
 /**
- * 发布到 Open VSX（Cursor 扩展源）。
+ * 打包并发布到 Open VSX（Cursor 扩展源）。
  *
- * 前置：
- * 1. https://open-vsx.org 登录 → Profile 签署 Publisher Agreement
- * 2. Access Tokens 创建 Token
- * 3. 环境变量 OVSX_PAT=你的 token（勿写入 package.json / 勿提交仓库）
+ * 两种认证方式：
+ *  A. Trusted Publishing（推荐，CI 用）：仓库 + workflow 在 open-vsx.org 注册后，
+ *     workflow 用 OIDC 换短期 token，无需任何 Secret。要求 ovsx >= 1.1.0、Node >= 22。
+ *  B. Access Token（本机 / 首次发布必须走这条）：OVSX_PAT=ovsxat_xxx
  *
  * 用法：
- *   export OVSX_PAT=ovsxat_xxx          # bash
- *   # 或 PowerShell: $env:OVSX_PAT="ovsxat_xxx"
- *   npm run openvsx:namespace           # 首次创建命名空间 zoceanfly
- *   npm run publish:openvsx             # 打包并发布当前 version 的 vsix
+ *   node scripts/openvsx-publish.js namespace            # 首次创建命名空间（需 PAT）
+ *   node scripts/openvsx-publish.js publish              # 有 OVSX_PAT 用 PAT，否则用 OIDC
+ *   node scripts/openvsx-publish.js publish-trusted      # 强制 OIDC（无 PAT 时失败即报错）
  */
 const { execSync } = require("child_process");
 const fs = require("fs");
@@ -22,14 +21,37 @@ const token = (process.env.OVSX_PAT || "").trim();
 const ns = process.env.OVSX_NAMESPACE || pkg.publisher || "zoceanfly";
 const cmd = process.argv[2] || "publish";
 
-if (!token) {
-  console.error(`
-[openvsx] 未设置 OVSX_PAT。
+/** OIDC 只在 GitHub Actions 等能提供 ID token 的环境可用 */
+const hasOidc =
+  Boolean(process.env.ACTIONS_ID_TOKEN_REQUEST_URL) &&
+  Boolean(process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN);
 
-请先在本机设置（不要写进仓库）：
+const trusted = cmd === "publish-trusted" || (cmd === "publish" && !token && hasOidc);
+
+if (cmd === "publish-trusted" && !hasOidc) {
+  console.error(`[openvsx] 当前环境拿不到 OIDC ID token，无法使用 Trusted Publishing。
+请在 GitHub Actions 中运行（job 需 permissions.id-token: write），
+或本机改用 OVSX_PAT：export OVSX_PAT=ovsxat_你的token`);
+  process.exit(1);
+}
+
+if (cmd === "namespace" && !token) {
+  console.error(`[openvsx] 创建命名空间必须用 Access Token（OIDC 不适用）。
+请先设置 OVSX_PAT：https://open-vsx.org/user-settings/tokens`);
+  process.exit(1);
+}
+
+if (!token && !trusted) {
+  console.error(`
+[openvsx] 缺少认证方式。
+
+Trusted Publishing（CI）：
+  workflow 需要 permissions.id-token: write，且仓库/workflow 已在
+  https://open-vsx.org/user-settings/trusted-publishers 注册。
+
+Access Token（本机）：
   bash:        export OVSX_PAT=ovsxat_你的token
   PowerShell:  $env:OVSX_PAT="ovsxat_你的token"
-  cmd:         set OVSX_PAT=ovsxat_你的token
 
 Token 来源：https://open-vsx.org/user-settings/tokens
 （需先签署 Eclipse Open VSX Publisher Agreement）
@@ -38,7 +60,8 @@ Token 来源：https://open-vsx.org/user-settings/tokens
 }
 
 function run(command) {
-  console.log(`[openvsx] ${command.replace(token, "***")}`);
+  const shown = token ? command.replace(token, "***") : command;
+  console.log(`[openvsx] ${shown}`);
   execSync(command, { cwd: root, stdio: "inherit", env: process.env, shell: true });
 }
 
@@ -55,6 +78,12 @@ if (!fs.existsSync(vsix)) {
   process.exit(1);
 }
 
-run(`npx ovsx publish "${vsix}" -p "${token}"`);
+// 显式传 token 时 ovsx 会优先用 PAT；否则走 OIDC 交换
+if (token) {
+  run(`npx ovsx publish "${vsix}" -p "${token}"`);
+} else {
+  run(`npx ovsx publish "${vsix}" --trusted-publishing`);
+}
+
 console.log(`[openvsx] 已发布 ${path.basename(vsix)} → Open VSX（Cursor 搜索可能需等待索引）。`);
 console.log(`          https://open-vsx.org/extension/${ns}/${pkg.name}`);

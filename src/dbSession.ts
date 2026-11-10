@@ -1,8 +1,37 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 import mysql from "mysql2/promise";
-import { findSqlTable, sqlCatalog, SqlTableMeta } from "./sqlIndex";
+import { findSqlTable, sqlCatalogMerged, SqlTableMeta } from "./sqlIndex";
 import { databaseNameFor, diffTableSchema, parseCreateTable, ParsedTable } from "./dbSchema";
+
+/**
+ * 数据库相关操作的扫描根。
+ * - 传单个字符串：既当「环境文件所在目录」也当 SQL 扫描根（扩展内平时就是工作区）
+ * - 传数组：**第一个**是环境文件所在目录（工作区），全部参与 SQL 扫描。
+ *   浏览器上传 proto 到临时目录后属于这种情况：SQL 还在原工作区，proto 在临时目录。
+ */
+export type DbRoot = string | string[];
+
+function listOf(root: DbRoot): string[] {
+  const list = Array.isArray(root) ? root : [root];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of list) {
+    const text = String(item || "").trim();
+    if (!text) continue;
+    const abs = path.resolve(text);
+    if (seen.has(abs)) continue;
+    seen.add(abs);
+    out.push(abs);
+  }
+  return out;
+}
+
+/** 环境 / 模板文件落盘的目录（工作区） */
+function primaryRoot(root: DbRoot): string {
+  const list = listOf(root);
+  return list[0] || "";
+}
 
 export interface DbEnv {
   id: string;
@@ -35,8 +64,8 @@ export function defaultDbEnvs(): DbEnvFile {
   };
 }
 
-export async function loadDbEnvs(root: string): Promise<DbEnvFile> {
-  const file = envFile(root);
+export async function loadDbEnvs(root: DbRoot): Promise<DbEnvFile> {
+  const file = envFile(primaryRoot(root));
   try {
     const data = JSON.parse(await fs.readFile(file, "utf8")) as Partial<DbEnvFile> & { activeId?: string };
     // 兼容旧文件里的 database 字段：读出来也丢掉，库选择只留在本地
@@ -50,10 +79,10 @@ export async function loadDbEnvs(root: string): Promise<DbEnvFile> {
   }
 }
 
-export async function saveDbEnvs(root: string, fileData: DbEnvFile): Promise<DbEnvFile> {
+export async function saveDbEnvs(root: DbRoot, fileData: DbEnvFile): Promise<DbEnvFile> {
   const envs = (fileData.envs || []).map(normalizeEnv).filter((item) => item.id && item.name);
   const next = envs.length ? { envs } : defaultDbEnvs();
-  const dir = path.join(path.resolve(root || ""), ".oceanview");
+  const dir = path.join(primaryRoot(root), ".oceanview");
   await fs.mkdir(dir, { recursive: true });
   // 只存环境定义：activeId、当前选的库都不落盘，避免每次切表都弄脏 db-envs.json
   const serialized = {
@@ -62,12 +91,12 @@ export async function saveDbEnvs(root: string, fileData: DbEnvFile): Promise<DbE
       return rest;
     }),
   };
-  await fs.writeFile(envFile(root), `${JSON.stringify(serialized, null, 2)}\n`, "utf8");
+  await fs.writeFile(envFile(primaryRoot(root)), `${JSON.stringify(serialized, null, 2)}\n`, "utf8");
   resetPools();
   return next;
 }
 
-export async function dbTestConnection(root: string, options: { envId?: string; env?: Partial<DbEnv> }): Promise<Record<string, unknown>> {
+export async function dbTestConnection(root: DbRoot, options: { envId?: string; env?: Partial<DbEnv> }): Promise<Record<string, unknown>> {
   const env = options.env ? normalizeEnv(options.env) : await envById(root, options.envId);
   if (!env) return { ok: false, error: "还没有数据库环境" };
   let connection: mysql.Connection | undefined;
@@ -94,7 +123,7 @@ export async function dbTestConnection(root: string, options: { envId?: string; 
   }
 }
 
-export async function dbDatabases(root: string, options: { envId?: string }): Promise<Record<string, unknown>> {
+export async function dbDatabases(root: DbRoot, options: { envId?: string }): Promise<Record<string, unknown>> {
   const env = await envById(root, options.envId);
   if (!env) return { ok: false, error: "还没有数据库环境", databases: [] };
   try {
@@ -108,7 +137,7 @@ export async function dbDatabases(root: string, options: { envId?: string }): Pr
   }
 }
 
-export async function dbTableDefinition(root: string, options: { envId?: string; tableId: string; database?: string; hostOverride?: HostOverride | null }): Promise<Record<string, unknown>> {
+export async function dbTableDefinition(root: DbRoot, options: { envId?: string; tableId: string; database?: string; hostOverride?: HostOverride | null }): Promise<Record<string, unknown>> {
   const table = await tableById(root, options.tableId);
   if (!table) return { ok: false, error: "找不到这张表" };
   const local = String(table.definition || "");
@@ -126,7 +155,7 @@ export async function dbTableDefinition(root: string, options: { envId?: string;
   }
 }
 
-export async function dbTablePage(root: string, options: {
+export async function dbTablePage(root: DbRoot, options: {
   envId?: string;
   tableId: string;
   limit?: number;
@@ -160,7 +189,7 @@ export async function dbTablePage(root: string, options: {
   }
 }
 
-export async function dbMutate(root: string, edit: {
+export async function dbMutate(root: DbRoot, edit: {
   op: "update" | "insert" | "delete";
   envId?: string;
   tableId: string;
@@ -207,7 +236,7 @@ export async function dbMutate(root: string, edit: {
   }
 }
 
-export async function dbQuery(root: string, options: { envId?: string; sql: string; database?: string; hostOverride?: HostOverride | null }): Promise<Record<string, unknown>> {
+export async function dbQuery(root: DbRoot, options: { envId?: string; sql: string; database?: string; hostOverride?: HostOverride | null }): Promise<Record<string, unknown>> {
   const env = await envById(root, options.envId, options.database, options.hostOverride);
   if (!env) return { ok: false, error: "还没有数据库环境" };
   const statements = splitStatements(options.sql).slice(0, 20);
@@ -233,8 +262,8 @@ export async function dbQuery(root: string, options: { envId?: string; sql: stri
   }
 }
 
-async function tableById(root: string, id: string): Promise<SqlTableMeta | undefined> {
-  const catalog = await sqlCatalog(root, false);
+async function tableById(root: DbRoot, id: string): Promise<SqlTableMeta | undefined> {
+  const catalog = await sqlCatalogMerged(listOf(root), false);
   return findSqlTable(catalog.tables, id);
 }
 
@@ -243,7 +272,7 @@ export interface HostOverride {
   port?: number;
 }
 
-async function envById(root: string, id?: string, database?: string, hostOverride?: HostOverride | null): Promise<DbEnv | undefined> {
+async function envById(root: DbRoot, id?: string, database?: string, hostOverride?: HostOverride | null): Promise<DbEnv | undefined> {
   const file = await loadDbEnvs(root);
   const env = file.envs.find((item) => item.id === id) || file.envs[0];
   const host = String(hostOverride?.host || "").trim();
@@ -300,7 +329,7 @@ function resetPools(): void {
 
 // ===== 结构对比 / 初始化库 =====
 
-async function rootPool(root: string, envId?: string): Promise<{ pool: mysql.Pool; env: DbEnv; db?: string } | { error: string }> {
+async function rootPool(root: DbRoot, envId?: string): Promise<{ pool: mysql.Pool; env: DbEnv; db?: string } | { error: string }> {
   const env = await envById(root, envId);
   if (!env) return { error: "还没有数据库环境" };
   const pool = mysql.createPool({
@@ -317,7 +346,7 @@ async function rootPool(root: string, envId?: string): Promise<{ pool: mysql.Poo
 }
 
 async function withRootConnection<T>(
-  root: string,
+  root: DbRoot,
   envId: string | undefined,
   run: (conn: mysql.PoolConnection, env: DbEnv) => Promise<T>,
 ): Promise<T | { error: string }> {
@@ -345,11 +374,10 @@ export interface DbTargetTable {
 }
 
 /** 按模板算出每张表应该落在哪个库（同文件多表共用一个库） */
-export async function dbPlanSchema(
-  root: string,
+export async function dbPlanSchema(root: DbRoot,
   options: { template?: string; tables?: { fileName: string; relative: string; table?: string }[] },
 ): Promise<Record<string, unknown>> {
-  const catalog = await sqlCatalog(root, false);
+  const catalog = await sqlCatalogMerged(listOf(root), false);
   const template = String(options.template || "mountain-{file}") || "mountain-{file}";
   const wanted = options.tables?.length
     ? options.tables.map((item) => ({ fileName: String(item.fileName || ""), relative: String(item.relative || ""), table: item.table }))
@@ -394,8 +422,7 @@ function qualifyCreateTable(definition: string, database: string): string {
   );
 }
 /** 初始化数据库：按模板建库，再从 SQL 文件建表（已存在的表跳过） */
-export async function dbInitDatabases(
-  root: string,
+export async function dbInitDatabases(root: DbRoot,
   options: { envId?: string; template?: string; tables?: { fileName: string; relative: string }[]; createTables?: boolean },
 ): Promise<Record<string, unknown>> {
   const planResult = await dbPlanSchema(root, options);
@@ -455,8 +482,7 @@ export async function dbInitDatabases(
 }
 
 /** 差异对比：逐表比较「SQL 文件定义」与「库里的结构」，并给出以文件为准的 ALTER SQL */
-export async function dbDiffSchemas(
-  root: string,
+export async function dbDiffSchemas(root: DbRoot,
   options: {
     envId?: string;
     template?: string;

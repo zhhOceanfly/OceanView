@@ -74,11 +74,37 @@ export async function sqlCatalog(root: string, force = false): Promise<SqlCatalo
   };
 }
 
+/**
+ * 合并多个扫描根（Proto 上传目录 + 原工作区）的 SQL 索引。
+ * 与 excelCatalogMerged 一致：上传 proto 到临时目录后，SQL 仍在原工作区，
+ * 只扫 codeRoot 会得到空列表。
+ */
+export async function sqlCatalogMerged(roots: string[], force = false): Promise<SqlCatalog> {
+  const seen = new Set<string>();
+  const tables: SqlCatalog["tables"] = [];
+  const warnings: string[] = [];
+  let source = "";
+  for (const root of roots) {
+    const text = String(root || "").trim();
+    if (!text) continue;
+    const abs = path.resolve(text);
+    if (seen.has(abs)) continue;
+    seen.add(abs);
+    if (!source) source = abs;
+    const catalog = await sqlCatalog(abs, force);
+    for (const table of catalog.tables) {
+      if (tables.some((item) => item.id === table.id)) continue;
+      tables.push(table);
+    }
+    for (const warning of catalog.warnings) warnings.push(warning);
+  }
+  return { source, scannedAt: Date.now(), tables, warnings };
+}
+
 export async function sqlSearch(root: string, query: string, limit = 40): Promise<SqlSearchHit[]> {
   const tokens = String(query || "").trim().toLowerCase().split(/\s+/).filter(Boolean);
   if (!tokens.length) return [];
-  const indexed = await load(path.resolve(root || ""), false);
-  const hits: { hit: SqlSearchHit; score: number }[] = [];
+  const indexed = await load(path.resolve(root || ""), false);  const hits: { hit: SqlSearchHit; score: number }[] = [];
   for (const table of indexed.tables) {
     if (!tokens.every((token) => table.blob.includes(token))) continue;
     let count = 0;
@@ -104,6 +130,23 @@ export async function sqlSearch(root: string, query: string, limit = 40): Promis
   }
   hits.sort((a, b) => b.score - a.score || b.hit.count - a.hit.count || a.hit.table.localeCompare(b.hit.table));
   return hits.slice(0, limit).map((item) => item.hit);
+}
+
+export async function sqlSearchMerged(roots: string[], query: string, limit = 40): Promise<SqlSearchHit[]> {
+  const seen = new Set<string>();
+  const hits: SqlSearchHit[] = [];
+  for (const root of roots) {
+    const text = String(root || "").trim();
+    if (!text) continue;
+    const abs = path.resolve(text);
+    if (seen.has(abs)) continue;
+    seen.add(abs);
+    for (const hit of await sqlSearch(abs, query, limit)) {
+      if (hits.some((item) => item.id === hit.id)) continue;
+      hits.push(hit);
+    }
+  }
+  return hits.slice(0, limit);
 }
 
 export function findSqlTable(tables: SqlTableMeta[], id: string): SqlTableMeta | undefined {

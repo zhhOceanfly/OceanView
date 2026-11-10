@@ -1,12 +1,12 @@
 # 发布 npm CLI：@zhhoceanfly/oceanview
 #
-# 推荐：Trusted Publishing（OIDC，无 NPM_TOKEN、无浏览器 MFA）
+# 认证：npm Trusted Publishing（OIDC，无 NPM_TOKEN、无浏览器 MFA）
 #   1. https://www.npmjs.com/package/@zhhoceanfly/oceanview → Settings → Trusted Publisher
-#   2. GitHub Actions：用户/组织、仓库、Workflow filename = publish-npm-cli.yml
-#      （勾选允许 npm publish；新建后 2 天内需成功发一次完成绑定）
-#   3. 本 workflow 已设 id-token: write
-#
-# 备选：Granular Access Token（勾选 Bypass 2FA）→ Secret 名 NPM_TOKEN
+#      选 GitHub Actions，填：用户 zhhOceanfly / 仓库 OceanView /
+#      Workflow filename = publish-npm-cli.yml / Allowed actions 勾 npm publish
+#   2. 新建的 Trusted Publisher 必须在 2 天内成功发布一次，否则失效需重建
+#   3. 首次发布例外：包在 npm 上还不存在时无法配置 Trusted Publisher，
+#      必须先本机用 token 发一次（见 PUBLISH.md），之后才能全交给 CI
 #
 # 触发（与 Open VSX / DBX 分开，勿共用 tag）：
 #   - 手动：Actions → Publish npm CLI → Run workflow
@@ -24,11 +24,11 @@ on:
 
 permissions:
   contents: read
-  id-token: write # Trusted Publishing (OIDC)
+  id-token: write # Trusted Publishing 换取短期 token 必须
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest # Trusted Publishing 只支持 GitHub 托管 runner
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,17 +36,17 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          # Trusted Publishing 要求 Node ≥ 22.14、npm CLI ≥ 11.5.1
-          node-version: "22"
+          # Trusted Publishing 要求 Node >= 22.14；22 分支会取最新 22.x
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            packages/cli/package-lock.json
+          # 发布构建不要用依赖缓存
+          package-manager-cache: false
 
-      - name: Show npm / node
+      - name: Ensure npm CLI supports trusted publishing
         run: |
           node -v
+          npm -v
+          npm install -g npm@^11.5.1
           npm -v
 
       - name: Install dependencies
@@ -60,8 +60,22 @@ jobs:
       - name: Build CLI
         run: npm run build:cli
 
+      # 该版本已发布时跳过，避免 tag 重跑直接失败
+      - name: Resolve version
+        id: version
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./packages/cli/package.json').version")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "CLI version: $VERSION"
+          if npm view "@zhhoceanfly/oceanview@$VERSION" version >/dev/null 2>&1; then
+            echo "already_published=true" >> "$GITHUB_OUTPUT"
+            echo "已在 npm 上，跳过发布。"
+          else
+            echo "already_published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # 不传任何 token：id-token: write + npm >= 11.5.1 会自动走 OIDC 并生成 provenance
       - name: Publish @zhhoceanfly/oceanview
-        env:
-          # 未配置 Trusted Publisher 时可用 Bypass-2FA 的 Granular Token
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        if: steps.version.outputs.already_published == 'false'
         run: npm publish ./packages/cli --access public --registry https://registry.npmjs.org/

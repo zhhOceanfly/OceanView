@@ -1,0 +1,39 @@
+
+(node:86492) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `Cursor --trace-deprecation ...` to show where the warning was created)
+警告: "log-file"不在已知选项列表中，但仍传递给 Electron/Chromium。
+[main 2026-11-10T07:19:16.530Z] PolicyConfiguration#initialize
+[main 2026-11-10T07:19:16.531Z] PolicyConfiguration#updatePolicyDefinitions [
+  'update.mode',
+  'update.channel',
+  'update.enableWindowsBackgroundUpdates',
+  'update.releaseTrack',
+  'update.releaseTrackOverride',
+  'cursor.agentHost.updateMode',
+  'http.useLocalProxyConfiguration',
+  'http.electronFetch',
+  'http.proxy',
+  'http.proxyStrictSSL',
+  'http.proxyKerberosServicePrincipal',
+  'http.noProxy',
+  'http.proxyAuthorization',
+  'http.proxySupport',
+  'http.systemCertificates',
+  'http.experimental.systemCertificatesV2',
+  'http.fetchAdditionalSupport',
+  'crashReporting.enabled',
+  'telemetry.enableTelemetry'
+]
+[main 2026-11-10T07:19:16.531Z] NativePolicyService#_updatePolicyDefinitions - Found 2 policy definitions
+[main 2026-11-10T07:19:16.546Z] NativePolicyService#_onDidPolicyChange - Updated policy values: {}
+[main 2026-11-10T07:19:16.547Z] PolicyConfiguration#update [ 'update.mode', 'cursor.agentHost.updateMode' ]
+[main 2026-11-10T07:19:16.547Z] PolicyConfiguration#updatePolicyDefinitions [ 'cursor.experimental.startupConnectTransport' ]
+[main 2026-11-10T07:19:16.548Z] PolicyConfiguration#update []
+[main 2026-11-10T07:19:16.548Z] [File Watcher (node.js)] Request to start watching: c:\Users\zoceanfly\AppData\Roaming\Cursor\User (excludes: <none>, includes: <all>, filter: <none>, correlationId: <none>),c:\Users\zoceanfly\AppData\Roaming\Cursor\User\settings.json (excludes: <none>, includes: <all>, filter: <none>, correlationId: <none>)
+[main 2026-11-10T07:19:16.563Z] [File Watcher (node.js)] Started watching: 'c:\Users\zoceanfly\AppData\Roaming\Cursor\User'
+[main 2026-11-10T07:19:16.564Z] [File Watcher (node.js)] Started watching: 'c:\Users\zoceanfly\AppData\Roaming\Cursor\User\settings.json'
+[main 2026-11-10T07:19:16.608Z] Sending some foreground love to the running instance: 46392
+[main 2026-11-10T07:19:16.611Z] Sending env to running instance...
+[main 2026-11-10T07:19:16.786Z] Sent env to running instance. Terminating...
+[main 2026-11-10T07:19:16.786Z] Lifecycle#kill()
+[main 2026-11-10T07:19:16.786Z] Lifecycle#onWillShutdown.fire()

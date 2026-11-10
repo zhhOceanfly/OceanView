@@ -43,8 +43,11 @@
   "dependencies": {
     "@grpc/grpc-js": "^1.14.6",
     "@grpc/proto-loader": "^0.8.1",
+    "mysql2": "^3.24.6",
+    "oceanview": "file:../..",
     "protobufjs": "^7.5.4",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "xlsx": "^0.18.5"
   },
   "publishConfig": {
     "access": "public",

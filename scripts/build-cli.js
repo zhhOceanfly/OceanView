@@ -89,12 +89,50 @@ function ensureCliDeps() {
 
 ensureCliDeps();
 
+/**
+ * dist/core 里复制过去的是扩展的核心模块，它们会 require 第三方包
+ * （xlsx / mysql2 / @grpc/grpc-js …）。这些包必须在 packages/cli 的
+ * dependencies 里声明，否则用户 `npm i -g` 之后运行时必然 MODULE_NOT_FOUND。
+ */
+function assertCliDependencies() {
+  const cliPkg = JSON.parse(fs.readFileSync(path.join(cliRoot, "package.json"), "utf8"));
+  const declared = new Set([
+    ...Object.keys(cliPkg.dependencies || {}),
+    ...Object.keys(cliPkg.optionalDependencies || {}),
+  ]);
+  const external = new Set();
+  const builtin = new Set(require("module").builtinModules);
+  for (const file of CORE_FILES) {
+    const compiled = path.join(outDir, file);
+    if (!fs.existsSync(compiled)) continue;
+    const text = fs.readFileSync(compiled, "utf8");
+    for (const match of text.matchAll(/require\("([^".][^"]*)"\)/g)) {
+      const id = match[1];
+      if (id.startsWith("node:")) continue;
+      if (builtin.has(id) || builtin.has(id.split("/")[0])) continue;
+      // 取包名（@scope/name 或 name）
+      const name = id.startsWith("@") ? id.split("/").slice(0, 2).join("/") : id.split("/")[0];
+      external.add(name);
+    }
+  }
+  const missing = [...external].filter((name) => !declared.has(name)).sort();
+  if (missing.length) {
+    console.error(`[build-cli] packages/cli/package.json 缺少运行时依赖：${missing.join(", ")}`);
+    console.error("[build-cli] 这些包会被 dist/core 的模块 require，不声明就会在用户机器上报 MODULE_NOT_FOUND。");
+    console.error("[build-cli] 补到 packages/cli/package.json 的 dependencies 后重试。");
+    process.exit(1);
+  }
+  console.log(`[build-cli] dependency check ok (${external.size} external modules)`);
+}
+
 console.log("[build-cli] compile extension src…");
 execSync("npx tsc -p ./", { cwd: root, stdio: "inherit" });
 
 console.log("[build-cli] compile packages/cli…");
 rmrf(path.join(cliRoot, "dist"));
 execSync("npx tsc -p ./", { cwd: cliRoot, stdio: "inherit" });
+
+assertCliDependencies();
 
 console.log("[build-cli] copy core modules…");
 rmrf(coreDest);
