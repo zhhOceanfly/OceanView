@@ -1,0 +1,331 @@
+{
+  "name": "protoview",
+  "displayName": "ProtoView",
+  "description": "浏览 Protobuf，并用 gRPC / HTTP / SSE / WebSocket 调试接口：侧边栏导航、Client、Auth、压测与链路调试",
+  "version": "0.1.6",
+  "private": true,
+  "publisher": "zoceanfly",
+  "license": "MIT",
+  "homepage": "https://github.com/zhhOceanfly/ProtoView",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zhhOceanfly/ProtoView.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zhhOceanfly/ProtoView/issues"
+  },
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#0f172a",
+    "theme": "dark"
+  },
+  "keywords": [
+    "protobuf",
+    "proto",
+    "grpc",
+    "protoview",
+    "grpcurl",
+    "api"
+  ],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Testing",
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:protoview.explorer",
+    "onCommand:protoview.show",
+    "onCommand:protoview.openClient",
+    "workspaceContains:**/*.proto"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "protoview.excelDiff",
+        "title": "ExcelView 差异对比",
+        "icon": "$(diff)",
+        "category": "ProtoView"
+      },
+      {
+        "command": "protoview.excelDiffUris",
+        "title": "ExcelView 差异对比（两版本）",
+        "category": "ProtoView"
+      },
+      {
+        "command": "protoview.openExcelView",
+        "title": "在 ExcelView 中打开",
+        "category": "ProtoView"
+      },
+      {
+        "command": "protoview.openDocsView",
+        "title": "在 DocsView 中打开",
+        "category": "ProtoView"
+      },
+      {
+        "command": "protoview.openDbView",
+        "title": "在 DbView 中打开",
+        "category": "ProtoView"
+      },
+      {
+        "command": "protoview.openProtoView",
+        "title": "在 ProtoView 中打开",
+        "category": "ProtoView"
+      },
+      {
+        "command": "protoview.show",
+        "title": "在预览中打开",
+        "category": "ProtoView"
+      },
+      {
+        "command": "protoview.openSource",
+        "title": "跳转到源码",
+        "icon": "$(go-to-file)",
+        "category": "ProtoView"
+      },
+      {
+        "command": "protoview.refresh",
+        "title": "重新解析",
+        "icon": "$(refresh)",
+        "category": "ProtoView"
+      },
+      {
+        "command": "protoview.showAtCursor",
+        "title": "预览光标所在定义",
+        "category": "ProtoView"
+      },
+      {
+        "command": "protoview.toggleSourceMode",
+        "title": "切换 Proto 来源",
+        "category": "ProtoView"
+      },
+      {
+        "command": "protoview.editGitUrl",
+        "title": "编辑 Git 地址",
+        "category": "ProtoView"
+      },
+      {
+        "command": "protoview.editGitBranch",
+        "title": "编辑 Git 分支",
+        "category": "ProtoView"
+      },
+      {
+        "command": "protoview.syncGitSource",
+        "title": "同步 Git Proto 来源",
+        "icon": "$(cloud-download)",
+        "category": "ProtoView"
+      },
+      {
+        "command": "protoview.showGitLog",
+        "title": "查看 Git 拉取日志",
+        "category": "ProtoView"
+      },
+      {
+        "command": "protoview.openGitTemp",
+        "title": "打开 Git 临时目录",
+        "category": "ProtoView"
+      },
+      {
+        "command": "protoview.openClient",
+        "title": "打开 ProtoView Client",
+        "icon": "$(window)",
+        "category": "ProtoView"
+      },
+      {
+        "command": "protoview.formatDocument",
+        "title": "格式化 Proto",
+        "category": "ProtoView"
+      }
+    ],
+    "languages": [
+      {
+        "id": "protobuf",
+        "aliases": [
+          "Protocol Buffers",
+          "protobuf",
+          "proto"
+        ],
+        "extensions": [
+          ".proto"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "protoview",
+          "title": "ProtoView",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "protoview": [
+        {
+          "id": "protoview.explorer",
+          "name": "ProtoView"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "protoview.refresh",
+          "when": "view == protoview.explorer",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "protoview.openSource",
+          "when": "view == protoview.explorer && viewItem == source",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "protoview.showAtCursor",
+          "when": "resourceExtname == .proto",
+          "group": "navigation"
+        },
+        {
+          "command": "protoview.formatDocument",
+          "when": "resourceExtname == .proto",
+          "group": "1_modification"
+        },
+        {
+          "command": "protoview.excelDiff",
+          "when": "resourceExtname == .xlsx || resourceExtname == .xlsm || resourceExtname == .xls || resourceExtname == .csv",
+          "group": "navigation"
+        }
+      ],
+      "scm/resourceState/context": [
+        {
+          "command": "protoview.excelDiff",
+          "when": "resourceExtname == .xlsx || resourceExtname == .xlsm || resourceExtname == .xls || resourceExtname == .csv",
+          "group": "1_modification"
+        }
+      ],
+      "scm/resourceFolder/context": [
+        {
+          "command": "protoview.excelDiff",
+          "when": "resourceExtname == .xlsx || resourceExtname == .xlsm",
+          "group": "1_modification"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "protoview.openProtoView",
+          "when": "resourceExtname == .proto",
+          "group": "navigation@9"
+        },
+        {
+          "command": "protoview.openDbView",
+          "when": "resourceExtname == .sql",
+          "group": "navigation@9"
+        },
+        {
+          "command": "protoview.openDocsView",
+          "when": "resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdx || resourceExtname == .docx",
+          "group": "navigation@9"
+        },
+        {
+          "command": "protoview.openExcelView",
+          "when": "resourceExtname == .xlsx || resourceExtname == .xlsm || resourceExtname == .xls || resourceExtname == .csv",
+          "group": "navigation@9"
+        }
+      ]
+    },
+    "customEditors": [
+      {
+        "viewType": "protoview.excelViewer",
+        "displayName": "ExcelView",
+        "selector": [
+          { "filenamePattern": "*.xlsx" },
+          { "filenamePattern": "*.xlsm" },
+          { "filenamePattern": "*.xls" },
+          { "filenamePattern": "*.csv" }
+        ],
+        "priority": "default"
+      },
+      {
+        "viewType": "protoview.docsViewer",
+        "displayName": "DocsView",
+        "selector": [
+          { "filenamePattern": "*.md" },
+          { "filenamePattern": "*.markdown" },
+          { "filenamePattern": "*.mdx" },
+          { "filenamePattern": "*.docx" }
+        ],
+        "priority": "default"
+      }
+    ],
+    "configurationDefaults": {
+      "workbench.editorAssociations": {
+        "*.md": "protoview.docsViewer",
+        "*.markdown": "protoview.docsViewer",
+        "*.mdx": "protoview.docsViewer",
+        "*.docx": "protoview.docsViewer",
+        "*.xlsx": "protoview.excelViewer",
+        "*.xlsm": "protoview.excelViewer"
+      },
+      "[protobuf]": {
+        "editor.defaultFormatter": "zoceanfly.protoview",
+        "editor.formatOnSave": false,
+        "editor.wordBasedSuggestions": "off"
+      }
+    },
+    "configuration": {
+      "title": "ProtoView",
+      "properties": {
+        "protoview.showGoogle": {
+          "type": "boolean",
+          "default": false,
+          "description": "在侧边栏中显示 google.* 标准包。关闭时仍会解析它们，以便跳转到被引用的类型。"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -w -p ./",
+    "clean:vsix": "node -e \"const fs=require('fs');for(const f of fs.readdirSync('.'))if(f.endsWith('.vsix'))fs.unlinkSync(f)\"",
+    "package:precheck": "vsce ls --tree",
+    "package": "npm run compile && vsce package",
+    "package:fresh": "npm run clean:vsix && npm run package",
+    "publish": "npm run compile && vsce publish",
+    "publish:patch": "npm run compile && vsce publish patch",
+    "publish:minor": "npm run compile && vsce publish minor",
+    "openvsx:namespace": "node scripts/openvsx-publish.js namespace",
+    "publish:openvsx": "npm run package && node scripts/openvsx-publish.js publish",
+    "build:cli": "node scripts/build-cli.js",
+    "dev:cli": "node scripts/dev-cli.js",
+    "publish:cli": "npm run build:cli && npm publish ./packages/cli --access public --registry https://registry.npmjs.org/",
+    "build:dbx": "node scripts/build-dbx-plugin.js",
+    "package:dbx": "npm run build:dbx && npm run package --prefix packages/dbx-plugin",
+    "dev:dbx": "npm run build:dbx && npm run dev --prefix packages/dbx-plugin",
+    "store:lf:dbx": "npm run store:lf --prefix packages/dbx-plugin"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^2.32.0",
+    "ovsx": "^0.10.1",
+    "typescript": "^5.5.0"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.14.6",
+    "@grpc/proto-loader": "^0.8.1",
+    "mysql2": "^3.24.6",
+    "nrm": "^2.1.0",
+    "protobufjs": "^7.5.4",
+    "xlsx": "^0.18.5"
+  }
+}

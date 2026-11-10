@@ -1,0 +1,209 @@
+# Build unsigned DBX plugin candidates (.dbxp)
+# 触发（与 Open VSX / npm 分开，勿共用 tag）：
+#   - Tag：git tag dbx-v0.1.6 && git push origin dbx-v0.1.6
+#   - 手动：Actions → Publish DBX plugin candidates → Run workflow
+# 版本以 packages/dbx-plugin/manifest.json 为准。
+name: Publish DBX plugin candidates
+
+on:
+  push:
+    tags:
+      - "dbx-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x64
+          - os: macos-latest
+            target: darwin-arm64
+          - os: windows-latest
+            target: windows-x64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: packages/dbx-plugin
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Install root deps
+        working-directory: .
+        run: npm ci
+
+      - name: Build plugin
+        working-directory: .
+        run: npm run build:dbx
+
+      # Go stamps vcs.modified=true if tracked files changed during build (e.g. rewriting
+      # runtime/package.json). Store review rejects dirty VCS. Assert clean + allow
+      # only gitignored build outputs before compiling the launcher.
+      - name: Assert git tree clean for Go VCS stamp
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "Working tree dirty before package — Go would stamp vcs.modified=true:"
+            git status --porcelain
+            exit 1
+          fi
+
+      - name: Package .dbxp
+        run: npx --yes @dbx-app/plugin-cli package . --output-dir dist
+
+      # Store signing expects checksums.json "algorithm":"sha256" (not legacy "hash").
+      - name: Normalize checksums.json field name
+        run: node ./scripts/normalize-dbxp-checksums.js dist
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbxp-${{ matrix.target }}
+          path: |
+            packages/dbx-plugin/dist/*.dbxp
+            packages/dbx-plugin/dist/*.artifact.json
+
+  # Matrix 里只要有一台成功就要发 Release（Linux/mac 失败时 Windows 仍应上架候选包）。
+  # needs.package 在部分矩阵失败时 result=failure，必须用 always()，否则整段 release 会被跳过，
+  # 产物只留在 Actions Artifact，不会出现在 GitHub Releases。
+  release:
+    needs: package
+    if: ${{ always() && !cancelled() && startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: bundled
+          pattern: dbxp-*
+          merge-multiple: true
+          # 部分平台失败时仍下载已成功的 artifact
+        continue-on-error: false
+
+      - name: Collect release-candidates.json
+        id: meta
+        run: |
+          set -euo pipefail
+          mkdir -p out-release
+          shopt -s nullglob
+          if compgen -G "bundled/*.dbxp" > /dev/null; then
+            cp bundled/*.dbxp out-release/
+          fi
+          if compgen -G "bundled/*.artifact.json" > /dev/null; then
+            cp bundled/*.artifact.json out-release/
+          fi
+          if ! compgen -G "out-release/*.dbxp" > /dev/null; then
+            echo "No .dbxp artifacts downloaded — all package matrix jobs failed?"
+            ls -laR bundled || true
+            exit 1
+          fi
+          python3 <<'PY'
+          # Shape must match t8y2/dbx-store scripts/sync-release-candidate.mjs:
+          #   { "plugin": { id, publisher, version, name?, description?, permissions? },
+          #     "artifacts": [ { target, url, sha256, size } ] }
+          # (NOT the legacy { schemaVersion, id, version, targets } form.)
+          import json, os, re, hashlib
+          from pathlib import Path
+
+          root = Path("out-release")
+          files = sorted(root.glob("*.dbxp"))
+          if not files:
+              raise SystemExit("no .dbxp files")
+
+          man = json.loads(Path("packages/dbx-plugin/manifest.json").read_text(encoding="utf-8"))
+          plugin_id = man.get("id") or "io.github.zhhoceanfly.protoview"
+          publisher = man.get("publisher") or "zhhoceanfly"
+          version = man.get("version")
+          if not version:
+              raise SystemExit("manifest.json missing version")
+
+          artifacts = []
+          for dbxp in files:
+              name = dbxp.name
+              if not name.endswith(".dbxp"):
+                  continue
+              stem = name[:-5]
+              art_path = root / f"{stem}.artifact.json"
+              sha = hashlib.sha256(dbxp.read_bytes()).hexdigest()
+              size = dbxp.stat().st_size
+              target = "unknown"
+              if art_path.exists():
+                  data = json.loads(art_path.read_text(encoding="utf-8"))
+                  target = data.get("target") or target
+                  sha = data.get("sha256") or sha
+                  size = int(data.get("size") or size)
+                  if data.get("id"):
+                      plugin_id = data["id"]
+                  if data.get("version"):
+                      version = data["version"]
+              else:
+                  m = re.match(
+                      r"^(?P<id>.+)-(?P<ver>\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)(-(?P<tgt>.+))?$",
+                      stem,
+                  )
+                  if m:
+                      plugin_id = m.group("id") or plugin_id
+                      version = m.group("ver") or version
+                      target = m.group("tgt") or target
+              # Bare filename preferred; sync rebuilds the GitHub Release URL.
+              artifacts.append({
+                  "target": target,
+                  "url": name,
+                  "sha256": sha,
+                  "size": size,
+              })
+
+          artifacts.sort(key=lambda a: a["target"])
+          identity = {
+              "id": plugin_id,
+              "publisher": publisher,
+              "version": version,
+              "name": man.get("name") or "ApiMan",
+              "description": man.get("description") or "",
+          }
+          perms = man.get("permissions") or []
+          if isinstance(perms, list) and perms:
+              identity["permissions"] = sorted({p for p in perms if isinstance(p, str) and p})
+
+          doc = {"plugin": identity, "artifacts": artifacts}
+          (root / "release-candidates.json").write_text(
+              json.dumps(doc, indent=2) + "\n", encoding="utf-8"
+          )
+          print(json.dumps(doc, indent=2))
+          PY
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: DBX plugin ${{ github.ref_name }}
+          files: out-release/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          body: |
+            Unsigned DBX plugin candidates for store review.
+
+            Install locally only with **Allow unsigned development packages** enabled.
+            Official marketplace listing requires a PR to `t8y2/dbx-store` (see `packages/dbx-plugin/PUBLISH-DBX.md`).
+
+            Partial platform builds are OK: only successfully packaged targets are attached.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

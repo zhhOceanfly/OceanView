@@ -1,0 +1,520 @@
+import { execFile } from "child_process";
+import * as fs from "fs/promises";
+import * as path from "path";
+import { Catalog, buildCatalog } from "./catalog";
+import {
+  ClientEnvFile,
+  defaultEnvFile,
+  toClientCatalog,
+} from "./clientModel";
+import { cancelStress, runStress } from "./grpcStress";
+import { decodeBytesMessage } from "./decodeBytes";
+import { closeGrpcStream, openGrpcStream, writeGrpcStream } from "./grpcInvoke";
+import { InvokePayload, dispatchInvoke } from "./invokeDispatch";
+import { openInEditor } from "./openEditor";
+import { ProtoParseError, parseProto } from "./parser";
+import { collectCodeSymbols } from "./codeSymbols";
+import { buildCallGraph } from "./callGraph";
+import { excelCatalogMerged, excelDiff, excelPage, excelSearch, excelUpdateCell } from "./excelIndex";
+import { gitChangesMerged } from "./gitChanges";
+import { handleOceanMessage, warmSearchIndexes } from "./oceanMessages";
+import {
+  ProtoSourceConfig,
+  collectProtoFiles,
+  sourceCacheDir,
+  syncGitSource,
+} from "./sourceCore";
+
+export type HostSend = (message: Record<string, unknown>) => void;
+export type HostLog = (line: string) => void;
+
+export interface ClientHostOptions {
+  /** Directory used for workspace .proto scan and .protoview/envs */
+  workspaceRoot: string;
+  showGoogle?: boolean;
+  initialSource?: Partial<ProtoSourceConfig>;
+  log?: HostLog;
+}
+
+export class ClientHost {
+  private catalog: Catalog = buildCatalog([], []);
+  private source: ProtoSourceConfig;
+  private workspaceRoot: string;
+  private showGoogle: boolean;
+  private stressRunning = false;
+  private log: HostLog;
+
+  constructor(options: ClientHostOptions) {
+    this.workspaceRoot = path.resolve(options.workspaceRoot);
+    this.showGoogle = Boolean(options.showGoogle);
+    this.log = options.log || (() => undefined);
+    this.source = {
+      mode: options.initialSource?.mode === "git" ? "git" : "workspace",
+      gitUrl: options.initialSource?.gitUrl?.trim() || "",
+      gitBranch: options.initialSource?.gitBranch?.trim() || "main",
+      localPath: options.initialSource?.localPath || "",
+      dirPath: options.initialSource?.dirPath?.trim()
+        || (options.initialSource?.mode === "git" ? "" : this.workspaceRoot),
+      lastError: options.initialSource?.lastError || "",
+      lastLog: options.initialSource?.lastLog || "",
+      lastSyncedAt: options.initialSource?.lastSyncedAt || 0,
+    };
+  }
+
+  getSource(): ProtoSourceConfig {
+    return { ...this.source };
+  }
+
+  getCatalog(): Catalog {
+    return this.catalog;
+  }
+
+  sourceLabel(): string {
+    if (this.source.mode === "git") {
+      return `Git · ${this.source.gitBranch || "main"} · ${this.source.gitUrl || "未配置"}`;
+    }
+    const root = this.source.dirPath?.trim() || this.workspaceRoot;
+    return `目录 · ${path.basename(root)}`;
+  }
+
+  /** 扫描函数/常量的代码根：Git 本地仓或自定义/工作区目录 */
+  private codeRoot(): string {
+    if (this.source.mode === "git") {
+      return this.source.localPath || "";
+    }
+    return this.source.dirPath?.trim() || this.workspaceRoot;
+  }
+
+  /** Excel 可能在代码根，也可能在工作区（git 模式下代码根是临时目录） */
+  private excelRoots(): string[] {
+    return [this.codeRoot(), this.workspaceRoot];
+  }
+
+  async reload(syncGit = true): Promise<void> {
+    if (this.source.mode === "git") {
+      if (syncGit || !this.source.localPath) {
+        this.source = await syncGitSource(this.source, this.log);
+        if (this.source.lastError) {
+          this.catalog = buildCatalog([], [{ file: "git", message: this.source.lastError }]);
+          return;
+        }
+      }
+      await this.loadFromDirectory(this.source.localPath);
+      return;
+    }
+    const root = this.source.dirPath?.trim() || this.workspaceRoot;
+    this.workspaceRoot = path.resolve(root);
+    await this.loadFromDirectory(this.workspaceRoot);
+  }
+
+  async handleMessage(message: {
+    type?: string;
+    payload?: InvokePayload & ClientEnvFile & {
+      mode?: string;
+      dirPath?: string;
+      gitUrl?: string;
+      gitBranch?: string;
+      concurrency?: number;
+      total?: number;
+      args?: string[];
+      binary?: string;
+      id?: string;
+    };
+    file?: string;
+    line?: number;
+    editor?: string;
+    id?: string;
+  }, send: HostSend): Promise<void> {
+    const type = message.type;
+    const ocean = await handleOceanMessage(type, message.payload, this.codeRoot(), this.workspaceRoot);
+    if (ocean) {
+      send(ocean);
+      return;
+    }
+    if (type === "ready") {
+      await this.postBootstrap(send);
+      return;
+    }
+    if (type === "loadCodeSymbols") {
+      const root = this.codeRoot();
+      const force = Boolean((message.payload as { force?: boolean } | undefined)?.force);
+      const items = root ? await collectCodeSymbols(root, force) : [];
+      send({ type: "codeSymbols", items, root });
+      return;
+    }
+    if (type === "loadCallGraph") {
+      const root = this.codeRoot();
+      const payload = message.payload as { name?: string; file?: string; depth?: number } | undefined;
+      const graph = root && payload
+        ? await buildCallGraph({ root, name: String(payload.name || ""), file: payload.file, depth: payload.depth })
+        : null;
+      send({ type: "callGraph", payload: graph, depth: payload?.depth ?? 2 });
+      return;
+    }
+    if (type === "excelCatalog") {
+      // codeRoot 在 git 模式下是临时 clone，Excel 通常在工作区里，两个根都要扫
+      const force = Boolean((message.payload as { force?: boolean } | undefined)?.force);
+      const catalog = await excelCatalogMerged(this.excelRoots(), force);
+      send({ type: "excelCatalog", payload: catalog });
+      return;
+    }
+    if (type === "excelPage") {
+      const payload = message.payload as { id?: string; offset?: number; limit?: number; focusRow?: number } | undefined;
+      const page = payload?.id
+        ? await excelPage(this.excelRoots(), String(payload.id), {
+          offset: payload.offset,
+          limit: payload.limit,
+          focusRow: payload.focusRow,
+        })
+        : null;
+      send({ type: "excelPage", payload: page });
+      return;
+    }
+    if (type === "excelUpdate") {
+      const payload = message.payload as { id?: string; row?: number; col?: number; value?: string } | undefined;
+      const result = payload?.id
+        ? await excelUpdateCell(this.excelRoots(), {
+          id: String(payload.id),
+          row: Number(payload.row),
+          col: Number(payload.col),
+          value: String(payload.value ?? ""),
+        })
+        : { ok: false, error: "缺少表标识" };
+      send({ type: "excelUpdate", payload: result });
+      return;
+    }
+    if (type === "excelSearch") {
+      const payload = message.payload as { query?: string } | undefined;
+      const hits = await excelSearch(this.excelRoots(), String(payload?.query || ""));
+      send({ type: "excelSearch", payload: hits });
+      return;
+    }
+    if (type === "excelDiff") {
+      const payload = message.payload as { id?: string; sheet?: string } | undefined;
+      const diff = payload?.id
+        ? await excelDiff(this.excelRoots(), { id: String(payload.id), sheet: payload.sheet })
+        : { ok: false, error: "缺少表标识" };
+      send({ type: "excelDiff", payload: diff });
+      return;
+    }
+    if (type === "gitChanges") {
+      const changes = await gitChangesMerged(
+        [this.codeRoot(), this.workspaceRoot],
+        Boolean((message.payload as { force?: boolean } | undefined)?.force),
+      );
+      send({ type: "gitChanges", payload: changes });
+      return;
+    }
+    if (type === "refresh") {
+      await this.reload(this.source.mode === "git");
+      await this.postBootstrap(send);
+      return;
+    }
+    if (type === "setSource" && message.payload) {
+      const mode = message.payload.mode === "git" ? "git" : "workspace";
+      const gitUrl = String(message.payload.gitUrl || "").trim();
+      const gitBranch = String(message.payload.gitBranch || "main").trim() || "main";
+      const dirPath = String(message.payload.dirPath || "").trim();
+      const prevUrl = this.source.gitUrl;
+      if (mode === "git") {
+        this.source = {
+          ...this.source,
+          mode: "git",
+          gitUrl,
+          gitBranch,
+          dirPath: "",
+          lastError: "",
+          localPath: gitUrl === prevUrl ? this.source.localPath : "",
+          lastSyncedAt: gitUrl === prevUrl ? this.source.lastSyncedAt : 0,
+        };
+      } else {
+        this.source = {
+          ...this.source,
+          mode: "workspace",
+          dirPath: dirPath || this.workspaceRoot,
+          lastError: "",
+        };
+      }
+      await this.reload(mode === "git");
+      await this.postBootstrap(send);
+      return;
+    }
+    if (type === "saveEnvs" && message.payload) {
+      await saveEnvFileAt(this.workspaceRoot, message.payload);
+      return;
+    }
+    if ((type === "loadTemplates" || type === "saveTemplate" || type === "deleteTemplate") && message.id) {
+      await handleTemplates(this.workspaceRoot, type, message.id, message.payload, send);
+      return;
+    }
+    if (type === "readSource" && message.file) {
+      const abs = path.resolve(String(message.file));
+      const line = Math.max(1, Math.floor(Number(message.line || 1) || 1));
+      try {
+        const content = await fs.readFile(abs, "utf8");
+        send({ type: "sourceContent", file: abs, line, content });
+      } catch (error) {
+        send({
+          type: "toast",
+          level: "err",
+          text: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return;
+    }
+    if (type === "openSource" && message.file) {
+      const line = Number(message.line || 1);
+      const editor = String(message.editor || "").trim();
+      this.log(`openSource: ${message.file}:${line}${editor ? ` (${editor})` : ""}`);
+      const result = await openInEditor(String(message.file), line, editor || undefined);
+      send({
+        type: "toast",
+        level: result.ok ? "ok" : "err",
+        text: result.ok
+          ? `已在编辑器打开 ${path.basename(String(message.file))}:${line}`
+          : result.detail,
+      });
+      return;
+    }
+    if (type === "invoke" && message.payload) {
+      const result = await dispatchInvoke(this.catalog, message.payload);
+      send({ type: "invokeResult", ...result });
+      return;
+    }
+    if (type === "streamOpen" && message.payload && this.catalog) {
+      const result = await openGrpcStream(this.catalog, message.payload as Parameters<typeof openGrpcStream>[1], {
+        onData: (event) => send({ type: "streamData", ...event }),
+        onEnd: (event) => send({ type: "streamEnded", ...event }),
+      });
+      send({ type: "streamOpenResult", ...result });
+      return;
+    }
+    if (type === "streamWrite" && message.payload) {
+      const streamId = String((message.payload as { streamId?: string }).streamId || "");
+      const body = (message.payload as { body?: unknown }).body;
+      const result = await writeGrpcStream(streamId, body);
+      send({ type: "streamWriteResult", id: message.payload.id, streamId, ...result });
+      return;
+    }
+    if (type === "streamClose" && message.payload) {
+      const streamId = String((message.payload as { streamId?: string }).streamId || "");
+      const result = await closeGrpcStream(streamId);
+      send({ type: "streamCloseResult", id: (message.payload as { id?: string }).id, ...result });
+      return;
+    }
+    if (type === "decodeBytes" && message.payload && this.catalog) {
+      const result = await decodeBytesMessage(
+        this.catalog,
+        message.payload as unknown as Parameters<typeof decodeBytesMessage>[1],
+      );
+      send({ type: "decodeBytesResult", ...result });
+      return;
+    }
+    if (type === "stressCancel" && message.id) {
+      cancelStress(message.id);
+      return;
+    }
+    if (type === "stress" && message.payload) {
+      if (this.stressRunning) {
+        send({
+          type: "stressResult",
+          id: message.payload.id,
+          error: "已有压测在进行中",
+        });
+        return;
+      }
+      this.stressRunning = true;
+      const id = String(message.payload.id || Date.now());
+      try {
+        const summary = await runStress(
+          this.catalog,
+          message.payload,
+          {
+            id,
+            concurrency: Number(message.payload.concurrency || 1),
+            total: Number(message.payload.total || 1),
+          },
+          (progress) => send({ ...progress, type: "stressProgress" }),
+        );
+        send({ ...summary, type: "stressResult" });
+      } finally {
+        this.stressRunning = false;
+      }
+      return;
+    }
+    if (type === "runGhz" && message.payload?.args) {
+      await runGhz(
+        message.payload.args,
+        String(message.payload.id || Date.now()),
+        String(message.payload.binary || "ghz"),
+        send,
+      );
+    }
+    // exportFlow / importFlow: handled in browser for CLI (download / file input)
+  }
+
+  async postBootstrap(send: HostSend): Promise<void> {
+    const envs = await loadEnvFileAt(this.workspaceRoot);
+    send({
+      type: "bootstrap",
+      workspaceKey: this.workspaceRoot,
+      catalog: toClientCatalog(this.catalog, this.sourceLabel(), this.showGoogle),
+      envs,
+      source: {
+        mode: this.source.mode === "git" ? "git" : "directory",
+        dirPath: this.source.dirPath || this.workspaceRoot,
+        gitUrl: this.source.gitUrl,
+        gitBranch: this.source.gitBranch,
+        localPath: this.source.localPath,
+        lastError: this.source.lastError,
+      },
+    });
+    warmSearchIndexes(this.codeRoot(), this.workspaceRoot);
+  }
+
+  private async loadFromDirectory(root: string): Promise<void> {
+    const entries = await collectProtoFiles(root);
+    this.log(`加载 ${root}，共 ${entries.length} 个 .proto`);
+    const errors: { file: string; message: string }[] = [];
+    const files = [];
+    for (const entry of entries) {
+      try {
+        const text = await fs.readFile(entry.path, "utf8");
+        files.push(parseProto(text, entry.path, entry.relPath));
+      } catch (error) {
+        const message = error instanceof ProtoParseError || error instanceof Error
+          ? error.message
+          : String(error);
+        errors.push({ file: entry.relPath, message });
+        this.log(`${entry.relPath}: ${message}`);
+      }
+    }
+    this.catalog = buildCatalog(files, errors);
+  }
+}
+
+export function defaultSourceConfig(): ProtoSourceConfig {
+  return {
+    mode: "workspace",
+    gitUrl: "",
+    gitBranch: "main",
+    localPath: "",
+    dirPath: "",
+    lastError: "",
+    lastLog: "",
+    lastSyncedAt: 0,
+  };
+}
+
+export async function loadEnvFileAt(root: string): Promise<ClientEnvFile> {
+  const file = path.join(root, ".protoview", "environments.json");
+  try {
+    const text = await fs.readFile(file, "utf8");
+    const data = JSON.parse(text) as ClientEnvFile;
+    if (!Array.isArray(data.envs) || !data.envs.length) return defaultEnvFile();
+    return {
+      activeEnvId: "",
+      envs: data.envs,
+    };
+  } catch {
+    return defaultEnvFile();
+  }
+}
+
+export async function saveEnvFileAt(root: string, data: ClientEnvFile): Promise<void> {
+  const dir = path.join(root, ".protoview");
+  const file = path.join(dir, "environments.json");
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(file, `${JSON.stringify({ envs: data.envs }, null, 2)}\n`, "utf8");
+}
+
+function isValidTemplateId(raw: unknown): raw is string {
+  if (typeof raw !== "string") return false;
+  const id = raw.trim();
+  if (!id.startsWith("tpl_") || id.length < 5 || id.length > 120) return false;
+  if (/[<>:"/\\|?*\x00-\x1f]/.test(id) || id.includes("..")) return false;
+  return true;
+}
+
+export async function handleTemplates(root: string, type: string, id: string, payload: unknown, send: HostSend): Promise<void> {
+  try {
+    if (!root) throw new Error("请先打开工作区");
+    const dir = path.join(root, ".protoview", "templates");
+    if (type !== "loadTemplates") {
+      const template = payload as { id?: unknown; name?: unknown } | undefined;
+      if (!isValidTemplateId(template?.id)) throw new Error("模板 ID 无效");
+      const file = path.join(dir, `${template.id}.json`);
+      if (type === "saveTemplate") {
+        const name = String(template?.name || "").trim();
+        if (!name) throw new Error("模板名称不能为空");
+        await fs.mkdir(dir, { recursive: true });
+        let files: string[] = [];
+        try { files = await fs.readdir(dir); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+        for (const entry of files) {
+          if (!/^tpl_.+\.json$/i.test(entry)) continue;
+          if (entry.toLowerCase() === `${template.id}.json`.toLowerCase()) continue;
+          try {
+            const existing = JSON.parse(await fs.readFile(path.join(dir, entry), "utf8")) as { name?: unknown };
+            if (String(existing?.name || "").trim() === name) {
+              throw new Error(`模板名称「${name}」已存在`);
+            }
+          } catch (error) {
+            if (error instanceof Error && error.message.startsWith("模板名称")) throw error;
+          }
+        }
+        await fs.writeFile(file, `${JSON.stringify(template, null, 2)}\n`, "utf8");
+      } else {
+        await fs.unlink(file);
+      }
+    }
+    let files: string[] = [];
+    try { files = await fs.readdir(dir); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    const templates = await Promise.all(files.filter((file) => /^tpl_.+\.json$/i.test(file)).map(async (file) => JSON.parse(await fs.readFile(path.join(dir, file), "utf8"))));
+    templates.sort((a, b) => (Number(b.at) || 0) - (Number(a.at) || 0));
+    send({ type: "templatesResult", id, templates });
+  } catch (error) {
+    send({ type: "templatesResult", id, error: (error as Error).message });
+  }
+}
+
+async function runGhz(
+  args: string[],
+  id: string,
+  binary: string,
+  send: HostSend,
+): Promise<void> {
+  const cmd = (binary || "ghz").trim() || "ghz";
+  const argv = Array.isArray(args) ? args.map((a) => String(a)) : [];
+  send({ type: "ghzProgress", id, text: `运行: ${cmd} ${argv.join(" ")}\n` });
+  await new Promise<void>((resolve) => {
+    // execFile + argv：避免 shell:true 下用户路径 / host / metadata 注入
+    const child = execFile(cmd, argv, { windowsHide: true, shell: false });
+    const push = (chunk: Buffer) => {
+      send({ type: "ghzProgress", id, text: chunk.toString() });
+    };
+    child.stdout?.on("data", push);
+    child.stderr?.on("data", push);
+    child.on("error", (error) => {
+      send({
+        type: "ghzResult",
+        id,
+        ok: false,
+        text: `无法启动 ghz：${error.message}\n请填写正确的 ghz 路径，或改用「复制 ghz 命令」。`,
+      });
+      resolve();
+    });
+    child.on("close", (code) => {
+      send({
+        type: "ghzResult",
+        id,
+        ok: code === 0,
+        text: `\n[exit ${code ?? "null"}]\n`,
+      });
+      resolve();
+    });
+  });
+}
+
+export { sourceCacheDir, syncGitSource };

@@ -1,0 +1,17 @@
+{
+  "name": "ApiMan",
+  "description": "Browse Protobuf and debug gRPC / HTTP / SSE / WebSocket APIs inside DBX. Requires Node.js >= 18 on PATH.",
+  "icon": "assets/plugin.svg",
+  "tags": ["protobuf", "grpc", "api", "http", "websocket"],
+  "permissions": ["host.workbench", "host.events", "host.storage", "host.binary"],
+  "source": "https://github.com/zhhOceanfly/ProtoView",
+  "homepage": "https://github.com/zhhOceanfly/ProtoView",
+  "license": "MIT",
+  "releaseNotes": "v0.1.6: align with ProtoView 0.1.6. Flow variables, enum names in gRPC responses, shared Client environment with per-node override. Still requires Node.js >= 18 on PATH.",
+  "localizations": {
+    "zh-CN": {
+      "name": "ApiMan",
+      "description": "在 DBX 中浏览 Protobuf，并用 gRPC / HTTP / SSE / WebSocket 调试接口。需要本机 Node.js ≥ 18。"
+    }
+  }
+}

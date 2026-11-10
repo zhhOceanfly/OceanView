@@ -1,0 +1,17 @@
+.vscode/**
+.vscode-test/**
+src/**
+.gitignore
+.cursorignore
+.cursorrules
+.cursor/**
+tsconfig.json
+**/*.ts
+!**/*.d.ts
+**/*.map
+Proto/**
+scripts/**
+packages/**
+*.vsix
+agent-transcripts/**
+**/.DS_Store
