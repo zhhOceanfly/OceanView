@@ -59,6 +59,20 @@ Token 来源：https://open-vsx.org/user-settings/tokens
   process.exit(1);
 }
 
+/**
+ * ovsx 1.4 内置的 vsce 4 依赖 parse5（纯 ESM），Node < 22.12 默认不允许
+ * require() 加载 ESM，会报 ERR_REQUIRE_ESM。这里在旧 Node 上自动加
+ * --experimental-require-module，避免用户必须换 Node 版本。
+ */
+function ovsxCommand(args) {
+  const [major, minor] = process.versions.node.split(".").map(Number);
+  const needsFlag = major < 22 || (major === 22 && minor < 12);
+  // 直接指向本地 bin，避免 npx 再解析一次（npx 也会走同一个 node）
+  const bin = path.join(root, "node_modules", "ovsx", "bin", "ovsx");
+  const invocation = fs.existsSync(bin) ? `"${process.execPath}"${needsFlag ? " --experimental-require-module" : ""} "${bin}"` : `npx ovsx${needsFlag ? " --node-options=--experimental-require-module" : ""}`;
+  return `${invocation} ${args}`;
+}
+
 function run(command) {
   const shown = token ? command.replace(token, "***") : command;
   console.log(`[openvsx] ${shown}`);
@@ -67,7 +81,7 @@ function run(command) {
 
 if (cmd === "namespace") {
   // 命名空间只需创建一次；已存在时会报错，可忽略
-  run(`npx ovsx create-namespace ${ns} -p "${token}"`);
+  run(ovsxCommand(`create-namespace ${ns} -p "${token}"`));
   console.log(`[openvsx] 命名空间「${ns}」已请求创建（若已存在可忽略报错）。`);
   process.exit(0);
 }
@@ -80,9 +94,9 @@ if (!fs.existsSync(vsix)) {
 
 // 显式传 token 时 ovsx 会优先用 PAT；否则走 OIDC 交换
 if (token) {
-  run(`npx ovsx publish "${vsix}" -p "${token}"`);
+  run(ovsxCommand(`publish "${vsix}" -p "${token}"`));
 } else {
-  run(`npx ovsx publish "${vsix}" --trusted-publishing`);
+  run(ovsxCommand(`publish "${vsix}" --trusted-publishing`));
 }
 
 console.log(`[openvsx] 已发布 ${path.basename(vsix)} → Open VSX（Cursor 搜索可能需等待索引）。`);
