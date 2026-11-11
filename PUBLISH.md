@@ -153,14 +153,14 @@ npm run publish:openvsx            # 打包并发布到 Open VSX
 
 | 渠道 | Tag 示例 | Workflow |
 |------|----------|----------|
-| Open VSX | `ext-v0.1.2` | `publish-openvsx.yml` |
-| npm CLI | `cli-v0.1.2` | `publish-npm-cli.yml` |
-| DBX | `dbx-v0.1.2` | `publish-dbx-plugin.yml` |
+| Open VSX | `ext-v0.1.3` | `publish-openvsx.yml` |
+| npm CLI | `cli-v0.1.3` | `publish-npm-cli.yml` |
+| DBX | `dbx-v0.1.3` | `publish-dbx-plugin.yml` |
 
 | 方式 | 操作 |
 |------|------|
 | 手动 | Actions → **Publish Open VSX** → **Run workflow** |
-| Tag | `git tag ext-v0.1.2 && git push origin ext-v0.1.2` |
+| Tag | `git tag ext-v0.1.3 && git push origin ext-v0.1.3` |
 
 工作流会 `npm ci` → `npm run package` → `ovsx publish --trusted-publishing`（OIDC 换 5 分钟短期 token，只对本扩展有效）。
 同一版本已存在时 Open VSX 会拒绝，需先升版本。
@@ -216,7 +216,7 @@ npm trust github @zhhoceanfly/oceanview --repo zhhOceanfly/OceanView --file publ
 | 方式 | 操作 |
 |------|------|
 | 手动 | Actions → **Publish npm CLI** → **Run workflow** |
-| Tag | `git tag cli-v0.1.2 && git push origin cli-v0.1.2`（tag 名仅作触发，真正版本以 `packages/cli` 的 `version` 为准，当前 **0.1.2**） |
+| Tag | `git tag cli-v0.1.3 && git push origin cli-v0.1.3`（tag 名仅作触发，真正版本以 `packages/cli` 的 `version` 为准，当前 **0.1.3**） |
 
 工作流会 `npm ci` → `build:cli` → `npm publish ./packages/cli`。OIDC 由 `permissions.id-token: write` 提供，无需 Secret；不传 `NODE_AUTH_TOKEN`，npm 会自动走 OIDC 并生成 provenance。
 

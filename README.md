@@ -4,7 +4,7 @@
 
 Rider 等环境可用 npm CLI：`npx @zhhoceanfly/oceanview` 在浏览器打开同一套 Client。
 
-当前扩展版本：**0.1.2** · CLI：`@zhhoceanfly/oceanview@0.1.2` · DBX（OceanView）：**0.1.2**
+当前扩展版本：**0.1.3** · CLI：`@zhhoceanfly/oceanview@0.1.3` · DBX（OceanView）：**0.1.3**
 
 ## 功能概览
 

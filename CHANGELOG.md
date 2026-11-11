@@ -2,6 +2,18 @@
 
 本文件记录 OceanView 的版本变更。扩展详情页的「更改日志」标签会读取它。
 
+## [0.1.3] — 2026-11-11
+
+### 修复
+
+- **ExcelView Client 查找定位滚动无效**：`applyExcelPage` 调用了定义在 `bind()` 内的 `applyExcelEditability`，渲染表格后抛 `ReferenceError`，导致表格出来但滚动条从不动。已把该函数提到模块作用域，恢复定位滚动。
+- **定位兜底**：按 `data-row`/`data-col` 直接找目标格，累加行列尺寸后校正所有可滚动祖先，仍不可见时回退 `scrollIntoView`；同页命中不再重复请求 `excelPage`，避免竞态丢 `focus`。
+
+### 功能
+
+- **ExcelView 横向滚动**：按住鼠标右键 + 滚轮横向滚动，单独滚轮保持纵向（Client 与直接打开的 Excel 编辑器一致）。
+- **DocsView Client 查找栏**：顶部补上查找框、清空、上下箭头与 `当前/总数`（此前只加在 `index.html`，扩展面板未生效）。
+
 ## [0.1.2] — 2026-11-11
 
 ### 修复
