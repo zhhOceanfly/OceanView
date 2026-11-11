@@ -37,6 +37,8 @@ export interface ExcelSheetPage {
   total: number;
   offset: number;
   focusRow: number;
+  /** 搜索定位到的列（0-based）；-1 表示只高亮行 */
+  focusCol: number;
   truncated: boolean;
 }
 
@@ -55,9 +57,25 @@ export interface ExcelSearchHit {
   sheet: string;
   /** 最佳命中的 Excel 行号；0 表示只匹配到表名 */
   row: number;
+  /** 最佳命中列（0-based）；-1 表示只匹配到表名/整行 */
+  col: number;
   /** 该 Sheet 内命中的行数 */
   count: number;
   preview: string;
+}
+
+/** 同一工作簿内可逐个跳转的单元格命中 */
+export interface ExcelCellMatch {
+  sheetId: string;
+  sheet: string;
+  row: number;
+  col: number;
+}
+
+export interface ExcelMatchList {
+  query: string;
+  relative: string;
+  matches: ExcelCellMatch[];
 }
 
 interface IndexedSheet extends ExcelSheetMeta {
@@ -147,7 +165,7 @@ export async function excelCatalogMerged(roots: string[], force = false): Promis
 export async function excelPage(
   root: string | string[],
   id: string,
-  options?: { offset?: number; limit?: number; focusRow?: number },
+  options?: { offset?: number; limit?: number; focusRow?: number; focusCol?: number },
 ): Promise<ExcelSheetPage | null> {
   const roots = normalizeRoots(root);
   const indexed = await collectSheets(roots, false);
@@ -164,10 +182,13 @@ export async function excelPage(
   }));
   const limit = clamp(options?.limit ?? 300, 1, 800);
   const focusRow = options?.focusRow ?? 0;
+  const focusCol = Number.isFinite(options?.focusCol) ? Math.trunc(options!.focusCol as number) : -1;
   let offset = options?.offset ?? 0;
+  // 搜索定位：目标行已在首屏内时不要裁切 offset，否则 ##type/##group 等表头行会被切掉；
+  // 前端在表格容器内滚动到高亮行。只有目标超出首屏时才平移窗口。
   if (options?.offset == null && focusRow > 0) {
     const at = data.findIndex((row) => row.row === focusRow);
-    offset = at >= 0 ? Math.max(0, at - 2) : 0;
+    if (at >= limit) offset = Math.max(0, at - 2);
   }
   offset = clamp(offset, 0, data.length);
   return {
@@ -183,6 +204,7 @@ export async function excelPage(
     total: data.length,
     offset,
     focusRow,
+    focusCol,
     truncated: sheet.truncated,
   };
 }
@@ -254,6 +276,7 @@ export async function excelSearch(root: string | string[], query: string, limit 
     const fileSheet = sheet.nameBlob;
     let bestScore = -1;
     let bestRow = 0;
+    let bestCol = -1;
     let bestPreview = "";
     let count = 0;
     for (const entry of sheet.lines) {
@@ -264,9 +287,11 @@ export async function excelSearch(root: string | string[], query: string, limit 
       const cells = sheet.rows[entry.index] ?? [];
       const score = scoreRow(tokens, fileSheet, cells);
       const row = sheet.rowOffset + entry.index + 1;
+      const col = bestCellCol(tokens, cells);
       if (score > bestScore || (score === bestScore && (bestRow === 0 || row < bestRow))) {
         bestScore = score;
         bestRow = row;
+        bestCol = col;
         bestPreview = previewCells(cells);
       }
     }
@@ -281,6 +306,7 @@ export async function excelSearch(root: string | string[], query: string, limit 
         relative: sheet.relative,
         sheet: sheet.sheet,
         row: bestRow,
+        col: bestCol,
         count,
         preview: bestPreview || previewCells(sheet.rows[0] ?? []) || "打开整张表",
       },
@@ -288,6 +314,53 @@ export async function excelSearch(root: string | string[], query: string, limit 
   }
   hits.sort((a, b) => b.score - a.score || b.hit.count - a.hit.count || a.hit.row - b.hit.row);
   return hits.slice(0, limit).map((item) => item.hit);
+}
+
+/**
+ * 同一工作簿内全部单元格命中（按 sheet 顺序 → 行 → 列），供上下箭头逐个跳转。
+ * sheetId / relative 任一可定位到文件；表头行（用作列名的那一行）不纳入可跳转列表。
+ */
+export async function excelMatches(
+  root: string | string[],
+  query: string,
+  options?: { sheetId?: string; relative?: string },
+): Promise<ExcelMatchList> {
+  const q = String(query || "").trim();
+  const tokens = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const empty = { query: q, relative: "", matches: [] as ExcelCellMatch[] };
+  if (!tokens.length) return empty;
+  const indexed = await collectSheets(root, false);
+  const anchor = indexed.sheets.find((sheet) =>
+    (options?.sheetId && sheet.id === options.sheetId)
+    || (options?.relative && sheet.relative === options.relative),
+  );
+  if (!anchor) return empty;
+  const sheets = indexed.sheets
+    .filter((sheet) => sheet.file === anchor.file)
+    .sort((a, b) => a.order - b.order || a.sheet.localeCompare(b.sheet, "zh"));
+  const matches: ExcelCellMatch[] = [];
+  for (const sheet of sheets) {
+    const fileSheet = sheet.nameBlob;
+    const headerRow = sheet.rows.length ? sheet.rowOffset + 1 : 0;
+    for (const entry of sheet.lines) {
+      const line = entry.line;
+      if (!tokens.some((token) => line.includes(token))) continue;
+      if (!tokens.every((token) => fileSheet.includes(token) || line.includes(token))) continue;
+      const row = sheet.rowOffset + entry.index + 1;
+      // 表头行已提升为列名，页面里没有对应数据行，跳过
+      if (headerRow && row === headerRow) continue;
+      const cells = sheet.rows[entry.index] ?? [];
+      const cols = matchingCellCols(tokens, cells);
+      if (!cols.length) {
+        matches.push({ sheetId: sheet.id, sheet: sheet.sheet, row, col: -1 });
+        continue;
+      }
+      for (const col of cols) {
+        matches.push({ sheetId: sheet.id, sheet: sheet.sheet, row, col });
+      }
+    }
+  }
+  return { query: q, relative: anchor.relative, matches };
 }
 
 function stampSame(parsed: ParsedFile, stat: { mtimeMs: number; size: number }): boolean {
@@ -881,6 +954,26 @@ function scoreRow(tokens: string[], fileSheet: string, cells: string[]): number 
     if (fileSheet.includes(token)) score += 12;
   }
   return score;
+}
+
+/** 优先精确匹配，其次包含匹配；都没有则 -1 */
+function bestCellCol(tokens: string[], cells: string[]): number {
+  const cols = matchingCellCols(tokens, cells);
+  return cols.length ? cols[0] : -1;
+}
+
+/** 行内所有命中列：精确匹配优先，再按列序去重 */
+function matchingCellCols(tokens: string[], cells: string[]): number[] {
+  const lowered = cells.map((cell) => cell.toLowerCase());
+  const exact: number[] = [];
+  const soft: number[] = [];
+  for (let i = 0; i < lowered.length; i++) {
+    const text = lowered[i];
+    if (!text) continue;
+    if (tokens.some((token) => text === token)) exact.push(i);
+    else if (tokens.some((token) => text.includes(token))) soft.push(i);
+  }
+  return exact.length ? exact : soft;
 }
 
 function previewCells(cells: string[]): string {

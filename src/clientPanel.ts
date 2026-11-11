@@ -14,7 +14,7 @@ import { cancelStress, runStress } from "./grpcStress";
 import { dispatchInvoke } from "./invokeDispatch";
 import { collectCodeSymbols } from "./codeSymbols";
 import { buildCallGraph } from "./callGraph";
-import { excelCatalogMerged, excelDiff, excelPage, excelSearch, excelUpdateCell } from "./excelIndex";
+import { excelCatalogMerged, excelDiff, excelMatches, excelPage, excelSearch, excelUpdateCell } from "./excelIndex";
 import { gitChangesMerged } from "./gitChanges";
 import { handleOceanMessage } from "./oceanMessages";
 import { openSource } from "./panel";
@@ -287,12 +287,13 @@ export class ClientPanel {
         return;
       }
       if (message.type === "excelPage" && this.panel) {
-        const payload = message.payload as { id?: string; offset?: number; limit?: number; focusRow?: number } | undefined;
+        const payload = message.payload as { id?: string; offset?: number; limit?: number; focusRow?: number; focusCol?: number } | undefined;
         const page = payload?.id
           ? await excelPage(this.excelRoots(), String(payload.id), {
             offset: payload.offset,
             limit: payload.limit,
             focusRow: payload.focusRow,
+            focusCol: payload.focusCol,
           })
           : null;
         this.post({ type: "excelPage", payload: page });
@@ -312,9 +313,21 @@ export class ClientPanel {
         return;
       }
       if (message.type === "excelSearch" && this.panel) {
-        const payload = message.payload as { query?: string } | undefined;
+        const payload = message.payload as { query?: string; requestId?: number } | undefined;
         const hits = await excelSearch(this.excelRoots(), String(payload?.query || ""));
-        this.post({ type: "excelSearch", payload: hits });
+        this.post({
+          type: "excelSearch",
+          payload: { requestId: payload?.requestId, hits },
+        });
+        return;
+      }
+      if (message.type === "excelMatches" && this.panel) {
+        const payload = message.payload as { query?: string; sheetId?: string; relative?: string } | undefined;
+        const list = await excelMatches(this.excelRoots(), String(payload?.query || ""), {
+          sheetId: payload?.sheetId ? String(payload.sheetId) : undefined,
+          relative: payload?.relative ? String(payload.relative) : undefined,
+        });
+        this.post({ type: "excelMatches", payload: list });
         return;
       }
       if (message.type === "excelDiff" && this.panel) {
@@ -1287,6 +1300,13 @@ export class ClientPanel {
         <strong id="docsTitle">选择左侧的文档</strong>
         <span class="excel-meta" id="docsMeta"></span>
         <span class="spacer"></span>
+        <div class="excel-match-nav" id="docsFindBar" title="在当前文档中查找">
+          <input id="docsFind" class="excel-find-input" type="search" placeholder="查找… Ctrl+F" autocomplete="off" spellcheck="false" />
+          <button type="button" class="icon-btn" id="docsFindClear" title="清空查找">✕</button>
+          <button type="button" class="icon-btn" id="docsFindPrev" title="上一处">▲</button>
+          <span class="excel-match-count" id="docsFindCount">0 / 0</span>
+          <button type="button" class="icon-btn" id="docsFindNext" title="下一处">▼</button>
+        </div>
       </div>
       <div class="docs-body" id="docsBody"><div class="excel-empty">选择左侧的文档查看内容</div></div>
       <div class="docs-editor hidden" id="docsEditor">
@@ -1305,12 +1325,6 @@ export class ClientPanel {
           <button class="btn" type="button" data-md="fence" title="代码块">代码</button>
           <button class="btn" type="button" data-md="table" title="表格">表格</button>
           <button class="btn" type="button" data-md="hr" title="分隔线">—</button>
-          <span class="md-find">
-            <input id="docsFind" type="text" placeholder="搜索本文" autocomplete="off" />
-            <button class="btn" id="docsFindPrev" type="button" title="上一处">↑</button>
-            <button class="btn" id="docsFindNext" type="button" title="下一处">↓</button>
-            <span class="excel-meta" id="docsFindCount"></span>
-          </span>
         </div>
         <div class="md-stage">
           <pre class="md-gutter" id="docsGutter" aria-hidden="true">1</pre>

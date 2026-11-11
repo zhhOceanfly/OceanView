@@ -88,7 +88,7 @@ dist/<plugin-id>-<version>-<target>.artifact.json
 1. 递增 `packages/dbx-plugin/manifest.json` 的 `version`（及 `.dbx-store.json` / store 候选模板中的版本）
 2. 打 **DBX 专用 Tag**（勿用 `ext-v*` / `cli-v*`，避免触发 Open VSX / npm）：
    ```bash
-   git tag dbx-v0.1.1 && git push origin dbx-v0.1.1
+   git tag dbx-v0.1.2 && git push origin dbx-v0.1.2
    ```
    CI（`publish-dbx-plugin.yml`）会打多平台 `.dbxp` 并创建/更新 GitHub Release。
 3. 也可本机 `npm run package:dbx` 后手工挂 Release，资产需包含：
@@ -101,9 +101,9 @@ dist/<plugin-id>-<version>-<target>.artifact.json
 
 | 渠道 | Tag | Workflow |
 |------|-----|----------|
-| Open VSX | `ext-v0.1.1` | `publish-openvsx.yml` |
-| npm CLI | `cli-v0.1.1` | `publish-npm-cli.yml` |
-| DBX | `dbx-v0.1.1` | `publish-dbx-plugin.yml` |
+| Open VSX | `ext-v0.1.2` | `publish-openvsx.yml` |
+| npm CLI | `cli-v0.1.2` | `publish-npm-cli.yml` |
+| DBX | `dbx-v0.1.2` | `publish-dbx-plugin.yml` |
 
 `release-candidates.json` 必须符合 `t8y2/dbx-store` 的 `scripts/sync-release-candidate.mjs`（`plugin` + `artifacts`，不是旧的 `id/version/targets`）：
 
@@ -112,7 +112,7 @@ dist/<plugin-id>-<version>-<target>.artifact.json
   "plugin": {
     "id": "io.github.zhhoceanfly.oceanview",
     "publisher": "zhhoceanfly",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "name": "OceanView",
     "description": "…",
     "permissions": ["host.workbench", "host.events", "host.storage", "host.binary"]
@@ -120,7 +120,7 @@ dist/<plugin-id>-<version>-<target>.artifact.json
   "artifacts": [
     {
       "target": "windows-x64",
-      "url": "io.github.zhhoceanfly.oceanview-0.1.1-windows-x64.dbxp",
+      "url": "io.github.zhhoceanfly.oceanview-0.1.2-windows-x64.dbxp",
       "sha256": "<64 hex>",
       "size": 123456
     }
@@ -130,7 +130,7 @@ dist/<plugin-id>-<version>-<target>.artifact.json
 
 `artifacts[].url` 可用裸文件名（推荐）或指向同一 tag 的完整 GitHub Release HTTPS URL。
 
-`store/io.github.zhhoceanfly.oceanview.json` 与 `store/release-candidates.0.1.1.json` 的版本和下载地址已写成 **0.1.1** / `dbx-v0.1.1`。里面的 `sha256` 与 `size` 仍是旧包（更名前 0.1.1）的占位值，打出新的 0.1.1 `.dbxp` 后必须重算再提交商店。
+`store/io.github.zhhoceanfly.oceanview.json` 与 `store/release-candidates.0.1.2.json` 的版本和下载地址已写成 **0.1.2** / `dbx-v0.1.2`。里面的 `sha256` 与 `size` 仍是占位值，打出新的 0.1.2 `.dbxp` 后必须重算再提交商店。
 
 计算哈希与大小（示例）：
 
@@ -224,7 +224,7 @@ python -c "import zipfile,json; z=zipfile.ZipFile('dist/*.dbxp'); print(json.loa
 | `ui/` | 构建产物（来自根目录 `client/`） |
 | `store/*.json` | 提交 `dbx-store` 时的 PR 素材模板 |
 | `../../scripts/build-dbx-plugin.js` | 一键构建 |
-| `../../.github/workflows/publish-dbx-plugin.yml` | Tag `dbx-v*`（当前 `dbx-v0.1.1`）时打多平台候选包 |
+| `../../.github/workflows/publish-dbx-plugin.yml` | Tag `dbx-v*`（当前 `dbx-v0.1.2`）时打多平台候选包 |
 
 ---
 

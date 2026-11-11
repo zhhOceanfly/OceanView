@@ -20,6 +20,9 @@
     dirty: false,
     source: "",
     findAt: 0,
+    findHits: [],
+    findIndex: -1,
+    findQuery: "",
   };
   let searchWaiters = [];
 
@@ -436,36 +439,107 @@
     if (kind === "hr") replaceSelection("\n\n---\n\n", 2, 5);
   }
 
-  function findInDoc(dir) {
-    const input = $("docsInput");
-    const query = $("docsFind")?.value || "";
-    const count = $("docsFindCount");
-    if (!input || !query) {
-      if (count) count.textContent = "";
-      return;
-    }
-    const hay = input.value.toLowerCase();
-    const needle = query.toLowerCase();
+  function docsSourceText() {
+    if (state.mode !== "preview") return String($("docsInput")?.value ?? state.pageData?.text ?? "");
+    return String(state.pageData?.text || "");
+  }
+
+  function collectDocHits(query) {
+    const needle = String(query || "").toLowerCase();
+    const hay = docsSourceText().toLowerCase();
     const hits = [];
+    if (!needle) return hits;
     let at = hay.indexOf(needle);
     while (at >= 0) {
       hits.push(at);
-      at = hay.indexOf(needle, at + needle.length);
+      at = hay.indexOf(needle, at + Math.max(1, needle.length));
     }
-    if (count) count.textContent = hits.length ? `${hits.length} 处` : "无";
-    if (!hits.length || !dir) return;
-    const cursor = dir < 0 ? input.selectionStart - 1 : (dir > 0 ? input.selectionEnd : input.selectionStart);
-    let pick = hits.find((pos) => pos >= cursor);
-    if (dir < 0) pick = [...hits].reverse().find((pos) => pos < input.selectionStart);
-    if (pick == null) pick = dir < 0 ? hits[hits.length - 1] : hits[0];
-    input.focus();
-    input.selectionStart = pick;
-    input.selectionEnd = pick + needle.length;
-    const before = input.value.slice(0, pick);
-    const line = before.split("\n").length;
-    const lineHeight = 22;
-    input.scrollTop = Math.max(0, (line - 3) * lineHeight);
-    paintGutter();
+    return hits;
+  }
+
+  function paintDocsFindCount() {
+    const count = $("docsFindCount");
+    const prev = $("docsFindPrev");
+    const next = $("docsFindNext");
+    const total = state.findHits.length;
+    if (count) count.textContent = total ? `${Math.min(state.findIndex + 1, total)} / ${total}` : "0 / 0";
+    if (prev) prev.disabled = !total;
+    if (next) next.disabled = !total;
+  }
+
+  function revealDocHit(pos) {
+    const query = state.findQuery;
+    const text = docsSourceText();
+    if (pos == null || pos < 0 || !query) return;
+    const line = text.slice(0, pos).split("\n").length;
+    state.focusLine = line;
+    const editing = state.mode !== "preview";
+    if (editing) {
+      const input = $("docsInput");
+      if (!input) return;
+      input.focus();
+      input.selectionStart = pos;
+      input.selectionEnd = pos + query.length;
+      const lineHeight = 22;
+      input.scrollTop = Math.max(0, (line - 3) * lineHeight);
+      paintGutter();
+      if (state.mode === "split") renderPreview();
+      return;
+    }
+    renderPreview();
+    const body = $("docsBody");
+    requestAnimationFrame(() => {
+      const hit = body?.querySelector(".docs-hit");
+      if (!hit) return;
+      const scroller = body;
+      const headPad = 12;
+      const box = scroller.getBoundingClientRect();
+      const rect = hit.getBoundingClientRect();
+      scroller.scrollTop = Math.max(0, scroller.scrollTop + (rect.top - box.top) - Math.max(24, (box.height - rect.height) * 0.3) - headPad);
+      hit.scrollIntoView({ block: "center", behavior: "instant" });
+    });
+  }
+
+  function clearDocsFind() {
+    state.findHits = [];
+    state.findIndex = -1;
+    state.findQuery = "";
+    state.focusLine = 0;
+    const input = $("docsFind");
+    if (input) input.value = "";
+    paintDocsFindCount();
+    if (state.pageData) {
+      if (state.mode === "preview") renderPreview();
+      else paintGutter();
+    }
+  }
+
+  function findInDoc(dir) {
+    const query = String($("docsFind")?.value || "").trim();
+    state.findQuery = query;
+    if (!query) {
+      clearDocsFind();
+      return;
+    }
+    const hits = collectDocHits(query);
+    state.findHits = hits;
+    if (!hits.length) {
+      state.findIndex = -1;
+      paintDocsFindCount();
+      return;
+    }
+    // dir === 0：只刷新计数；有方向时跳转（回车等同向下）
+    if (!dir) {
+      if (state.findIndex < 0) state.findIndex = 0;
+      state.findIndex = Math.min(state.findIndex, hits.length - 1);
+      paintDocsFindCount();
+      revealDocHit(hits[state.findIndex]);
+      return;
+    }
+    if (state.findIndex < 0) state.findIndex = dir > 0 ? -1 : 0;
+    state.findIndex = (state.findIndex + dir + hits.length) % hits.length;
+    paintDocsFindCount();
+    revealDocHit(hits[state.findIndex]);
   }
 
   $("docsInput")?.addEventListener("input", () => {
@@ -482,10 +556,20 @@
   });
   $("docsFind")?.addEventListener("input", () => findInDoc(0));
   $("docsFind")?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      clearDocsFind();
+      return;
+    }
     if (event.key === "Enter") {
       event.preventDefault();
+      // 回车 = 向下箭头；Shift+Enter = 向上
       findInDoc(event.shiftKey ? -1 : 1);
     }
+  });
+  $("docsFindClear")?.addEventListener("click", () => {
+    clearDocsFind();
+    $("docsFind")?.focus();
   });
   $("docsFindNext")?.addEventListener("click", () => findInDoc(1));
   $("docsFindPrev")?.addEventListener("click", () => findInDoc(-1));
@@ -517,7 +601,19 @@
       paintGutter();
     }
   });
+  // Docs 视图全局 Ctrl+F（阅读模式也可用）
+  document.addEventListener("keydown", (event) => {
+    if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+    if (String(event.key || "").toLowerCase() !== "f") return;
+    const onDocs = document.body?.dataset?.view === "docs" || !$("docsClient")?.classList.contains("hidden");
+    if (!onDocs) return;
+    event.preventDefault();
+    event.stopPropagation();
+    $("docsFind")?.focus();
+    $("docsFind")?.select();
+  }, true);
   $("docsSave")?.addEventListener("click", save);
+  paintDocsFindCount();
 
   function save() {
     if (!state.pageData?.editable) return;

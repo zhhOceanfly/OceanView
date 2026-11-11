@@ -15,7 +15,7 @@ import { openInEditor } from "./openEditor";
 import { ProtoParseError, parseProto } from "./parser";
 import { collectCodeSymbols } from "./codeSymbols";
 import { buildCallGraph } from "./callGraph";
-import { excelCatalogMerged, excelDiff, excelPage, excelSearch, excelUpdateCell } from "./excelIndex";
+import { excelCatalogMerged, excelDiff, excelMatches, excelPage, excelSearch, excelUpdateCell } from "./excelIndex";
 import { gitChangesMerged } from "./gitChanges";
 import { handleOceanMessage } from "./oceanMessages";
 import {
@@ -162,12 +162,13 @@ export class ClientHost {
       return;
     }
     if (type === "excelPage") {
-      const payload = message.payload as { id?: string; offset?: number; limit?: number; focusRow?: number } | undefined;
+      const payload = message.payload as { id?: string; offset?: number; limit?: number; focusRow?: number; focusCol?: number } | undefined;
       const page = payload?.id
         ? await excelPage(this.excelRoots(), String(payload.id), {
           offset: payload.offset,
           limit: payload.limit,
           focusRow: payload.focusRow,
+          focusCol: payload.focusCol,
         })
         : null;
       send({ type: "excelPage", payload: page });
@@ -187,9 +188,18 @@ export class ClientHost {
       return;
     }
     if (type === "excelSearch") {
-      const payload = message.payload as { query?: string } | undefined;
+      const payload = message.payload as { query?: string; requestId?: number } | undefined;
       const hits = await excelSearch(this.excelRoots(), String(payload?.query || ""));
-      send({ type: "excelSearch", payload: hits });
+      send({ type: "excelSearch", payload: { requestId: payload?.requestId, hits } });
+      return;
+    }
+    if (type === "excelMatches") {
+      const payload = message.payload as { query?: string; sheetId?: string; relative?: string } | undefined;
+      const list = await excelMatches(this.excelRoots(), String(payload?.query || ""), {
+        sheetId: payload?.sheetId ? String(payload.sheetId) : undefined,
+        relative: payload?.relative ? String(payload.relative) : undefined,
+      });
+      send({ type: "excelMatches", payload: list });
       return;
     }
     if (type === "excelDiff") {

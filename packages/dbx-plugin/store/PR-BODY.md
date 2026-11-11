@@ -1,14 +1,14 @@
 ## Plugin submission
 
 - Plugin ID: `io.github.zhhoceanfly.oceanview`
-- Version: `0.1.1`
+- Version: `0.1.2`
 - Publisher ID: `zhhoceanfly`
 
 ## Source repository and tag
 
 - Source: https://github.com/zhhOceanfly/OceanView
-- Immutable tag / Release: https://github.com/zhhOceanfly/OceanView/releases/tag/dbx-v0.1.1
-- Manifest / candidate / package filename version: **0.1.1** (aligned with tag `dbx-v0.1.1`)
+- Immutable tag / Release: https://github.com/zhhOceanfly/OceanView/releases/tag/dbx-v0.1.2
+- Manifest / candidate / package filename version: **0.1.2** (aligned with tag `dbx-v0.1.2`)
 
 ## Capabilities and user workflow
 
@@ -30,14 +30,14 @@ Yes:
 - May invoke `git` for Proto sync; local FS under plugin data / selected dirs.
 - Ships `LICENSE` (MIT, copyright zhhoceanfly) and `THIRD_PARTY_NOTICES.md` for `runtime/node_modules` (`@grpc/grpc-js` / `@grpc/proto-loader` Apache-2.0, `protobufjs` BSD-3-Clause).
 - `runGhz` / open-editor paths use `execFile` / argv (no `shell: true`).
-- Go binaries stamped with `vcs.modified=false` on tag `dbx-v0.1.1`.
+- Go binaries stamped with `vcs.modified=false` on tag `dbx-v0.1.2`.
 - Icon: `assets/plugin.svg` only.
 
 ## Files in this PR
 
 - `publishers/zhhoceanfly.json` (replace prior `zoceanfly` if present)
-- `candidates/io.github.zhhoceanfly.oceanview.json` (**exact filename**, no `candidates.` prefix; pins match Release `dbx-v0.1.1` / `release-candidates.json`)
+- `candidates/io.github.zhhoceanfly.oceanview.json` (**exact filename**, no `candidates.` prefix; pins match Release `dbx-v0.1.2` / `release-candidates.json`)
 
-## Maintainer edits
+## Release notes
 
-Please keep **Allow edits from maintainers** enabled on this PR so the Sign workflow can push signed catalog updates back to the PR branch. If disabled, signing only emits a `signed-catalog-patch` for maintainers to apply on `main`.
+v0.1.2: ExcelView search jumps to row/cell without clipping Luban header rows; first-search indexing warmup and requestId race fix. Still requires Node.js >= 18 on PATH.

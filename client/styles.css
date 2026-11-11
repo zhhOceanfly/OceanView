@@ -353,29 +353,46 @@ html, body {
 .excel-item.active { background: color-mix(in srgb, var(--accent) 18%, var(--panel-2)); color: var(--accent); }
 .excel-item-name { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .excel-item-meta { font-size: 10px; color: var(--muted); }
-.excel-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.excel-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden; /* 强制由 #excelTableWrap 承担滚动，定位才能写对 scrollTop/Left */
+}
 .excel-sheets {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   min-height: 36px;
   padding: 4px 10px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
+  overflow: hidden;
+}
+.excel-sheets:empty { display: none; }
+.excel-sheet-tabs {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
   overflow-x: auto;
   scrollbar-width: thin;
 }
-.excel-sheets:empty { display: none; }
 .excel-sheet-tab {
   flex: 0 0 auto;
-  max-width: 200px;
+  max-width: 220px;
   border: 1px solid transparent;
   border-radius: 7px;
   background: transparent;
   color: var(--muted);
   padding: 4px 10px;
   font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -385,6 +402,67 @@ html, body {
   color: var(--accent);
   border-color: color-mix(in srgb, var(--accent) 40%, transparent);
   background: color-mix(in srgb, var(--accent) 14%, var(--panel-2));
+}
+.excel-sheet-match {
+  flex: 0 0 auto;
+  min-width: 1.2em;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.excel-match-nav {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+  max-width: 100%;
+}
+.excel-bar .excel-match-nav {
+  /* 顶栏查找始终贴右，不被 title/meta 挤没 */
+  order: 99;
+}
+.excel-find-input {
+  width: 140px;
+  max-width: 28vw;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+  padding: 0 8px;
+  font-size: 12px;
+}
+.excel-find-input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.excel-match-nav .icon-btn {
+  width: 26px;
+  height: 26px;
+  font-size: 11px;
+  line-height: 1;
+}
+.excel-match-nav .icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.excel-match-count {
+  min-width: 3.2em;
+  text-align: center;
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--muted);
+  user-select: none;
+}
+.excel-cell.is-match-cell {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 .excel-bar {
   flex: 0 0 auto;
@@ -398,7 +476,6 @@ html, body {
   min-width: 0;
   min-height: 38px;
   justify-content: flex-start;
-}
 }
 .spacer { flex: 1 1 auto; min-width: 8px; }
 .side-filter-row {
@@ -432,7 +509,14 @@ html, body {
 }
 /* 保存按钮跟编辑模式并排，跟随所在位置，不再被推到右侧 */
 .excel-bar .btn.primary { margin-left: 0; }
-.excel-table-wrap { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.excel-table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+  /* 确保成为唯一滚动容器，定位算法依赖 scrollTop/scrollLeft */
+  overscroll-behavior: contain;
+}
 
 /* Excel 差异对比：左右两栏，行按行号对齐 */
 .excel-diff {
@@ -529,6 +613,20 @@ html, body {
   max-width: 320px;
 }
 .excel-row.is-target td { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.excel-cell.is-target-cell,
+.excel-row.is-target {
+  scroll-margin-top: 72px;
+  scroll-margin-bottom: 72px;
+  scroll-margin-left: 96px;
+  scroll-margin-right: 96px;
+}
+.excel-cell.is-target-cell {
+  outline: 2px solid color-mix(in srgb, var(--accent) 80%, transparent);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--accent) 32%, transparent) !important;
+  position: relative;
+  z-index: 1;
+}
 .excel-rowno {
   color: var(--muted);
   font-family: var(--mono);

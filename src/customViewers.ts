@@ -600,9 +600,25 @@ function baseStyles(): string {
   button.primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
   button:hover { opacity: .9; }
   .hint { color: var(--vscode-descriptionForeground); font-size: 11px; }
-  .tabs { display: flex; gap: 4px; padding: 6px 10px; flex-wrap: wrap; flex: 0 0 auto;
-    border-bottom: 1px solid var(--vscode-panel-border); }
+  .tabs { display: flex; align-items: center; gap: 8px; padding: 6px 10px; flex: 0 0 auto;
+    border-bottom: 1px solid var(--vscode-panel-border); overflow: hidden; }
+  .sheet-tabs { flex: 1 1 auto; min-width: 0; display: flex; gap: 4px; flex-wrap: nowrap; overflow-x: auto; }
   .tabs button.active { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+  .find-nav { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; margin-left: auto;
+    padding-left: 8px; border-left: 1px solid var(--vscode-panel-border); }
+  .find-nav input { width: 140px; height: 26px; border: 1px solid var(--vscode-panel-border); border-radius: 4px;
+    background: var(--vscode-input-background); color: var(--vscode-input-foreground); padding: 0 8px; font-size: 12px; }
+  .find-nav button { min-width: 26px; height: 26px; padding: 0 6px; }
+  .find-nav button:disabled { opacity: .4; }
+  .find-count { min-width: 3.2em; text-align: center; font-size: 11px; color: var(--vscode-descriptionForeground);
+    font-family: var(--vscode-editor-font-family, monospace); }
+  .sheet-match { margin-left: 4px; padding: 0 5px; border-radius: 999px; font-size: 10px;
+    color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+  td.is-find-hit { background: rgba(59, 130, 246, .14); }
+  td.is-find-current { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px;
+    background: rgba(59, 130, 246, .32) !important; scroll-margin: 72px 96px; }
+  mark.find-mark { background: rgba(59, 130, 246, .28); color: inherit; border-radius: 2px; }
+  mark.find-mark.current { outline: 2px solid var(--vscode-focusBorder); background: rgba(59, 130, 246, .45); }
   /* 关键：内容区自己滚动，滚轮不会失效 */
   .wrap { flex: 1 1 auto; min-height: 0; overflow: auto; }
   table { border-collapse: collapse; font: 12px/1.4 var(--vscode-editor-font-family, monospace); }
@@ -629,8 +645,16 @@ function renderExcelHtml(document: ExcelDocument): string {
   const activeName = lastSheet(document.uri.toString()) || names[0] || "";
   const sheet = document.sheet(activeName);
   const readonly = document.uri.scheme !== "file";
+  const workbook = names.map((name) => {
+    const item = document.sheet(name);
+    return {
+      name,
+      rowOffset: item?.rowOffset || 0,
+      rows: (item?.rows || []).map((row) => row.map((cell) => String(cell ?? ""))),
+    };
+  });
   const tabs = names.map((name) => (
-    `<button type="button" data-sheet="${escapeHtml(name)}"${name === activeName ? ' class="active"' : ""}>${escapeHtml(name)}</button>`
+    `<button type="button" data-sheet="${escapeHtml(name)}"${name === activeName ? ' class="active"' : ""}><span>${escapeHtml(name)}</span></button>`
   )).join("");
   const width = Math.max(...(sheet?.rows || []).map((row) => row.length), 1);
   const head = sheet
@@ -674,16 +698,27 @@ function renderExcelHtml(document: ExcelDocument): string {
       ${readonly ? "" : '<button type="button" data-diff-head title="与 git HEAD 版本对比，高亮变化的单元格">与 git 对比</button>'}
       <button class="primary" type="button" data-open-client>在 ExcelView Client 中编辑</button>
     </div>
-    <div class="tabs">${tabs}</div>
-    <div class="wrap">${content}</div>
+    <div class="tabs">
+      <div class="sheet-tabs" id="sheetTabs">${tabs}</div>
+      <div class="find-nav" title="在当前工作簿中查找（可跨 Sheet）">
+        <input id="findInput" type="search" placeholder="查找… Ctrl+F" autocomplete="off" spellcheck="false" />
+        <button type="button" id="findClear" title="清空查找">✕</button>
+        <button type="button" id="findPrev" title="上一处" disabled>▲</button>
+        <span class="find-count" id="findCount">0 / 0</span>
+        <button type="button" id="findNext" title="下一处" disabled>▼</button>
+      </div>
+    </div>
+    <div class="wrap" id="tableWrap">${content}</div>
     <script>
       const vscode = (() => {
         try { return acquireVsCodeApi(); } catch (e) { return { postMessage: () => {}, getState: () => ({}), setState: () => {} }; }
       })();
       const uriKey = ${JSON.stringify(document.uri.toString())};
       const readonly = ${readonly ? "true" : "false"};
+      const workbook = ${JSON.stringify(workbook)};
       const state = vscode.getState() || {};
       state.sheet = state.sheet || ${JSON.stringify(activeName)};
+      state.find = state.find || { query: "", matches: [], index: -1 };
       vscode.setState(state);
 
       // ===== 保存状态提示 =====
@@ -797,6 +832,206 @@ function renderExcelHtml(document: ExcelDocument): string {
         event.preventDefault();
         beginEdit(cell);
       });
+      // ===== 表内查找（跨 Sheet） =====
+      const findInput = document.getElementById("findInput");
+      const findCount = document.getElementById("findCount");
+      const findPrev = document.getElementById("findPrev");
+      const findNext = document.getElementById("findNext");
+      const tableWrap = document.getElementById("tableWrap");
+      function collectMatches(query) {
+        const needle = String(query || "").trim().toLowerCase();
+        const out = [];
+        if (!needle) return out;
+        for (const sheet of workbook) {
+          for (let r = 0; r < sheet.rows.length; r++) {
+            const row = sheet.rows[r] || [];
+            for (let c = 0; c < row.length; c++) {
+              const text = String(row[c] || "").toLowerCase();
+              if (!text.includes(needle)) continue;
+              out.push({ sheet: sheet.name, row: sheet.rowOffset + r + 1, col: c });
+            }
+          }
+        }
+        return out;
+      }
+      function paintFindCount() {
+        const total = (state.find.matches || []).length;
+        const index = Number(state.find.index);
+        if (findCount) findCount.textContent = total ? ((index >= 0 ? index + 1 : 1) + " / " + total) : "0 / 0";
+        if (findPrev) findPrev.disabled = !total;
+        if (findNext) findNext.disabled = !total;
+        const counts = {};
+        for (const hit of state.find.matches || []) counts[hit.sheet] = (counts[hit.sheet] || 0) + 1;
+        for (const btn of document.querySelectorAll("[data-sheet]")) {
+          const name = btn.getAttribute("data-sheet") || "";
+          let badge = btn.querySelector(".sheet-match");
+          const n = counts[name] || 0;
+          if (!n) { badge?.remove(); continue; }
+          if (!badge) {
+            badge = document.createElement("span");
+            badge.className = "sheet-match";
+            btn.appendChild(badge);
+          }
+          badge.textContent = String(n);
+        }
+      }
+      function scrollCellIntoView(cell) {
+        if (!cell || !tableWrap) return;
+        const row = cell.closest("tr");
+        const table = cell.closest("table");
+        if (!row || !table) {
+          cell.scrollIntoView({ block: "center", inline: "center" });
+          return;
+        }
+        const headH = table.tHead ? table.tHead.offsetHeight : 0;
+        let y = headH;
+        const body = table.tBodies && table.tBodies[0];
+        if (body) {
+          for (const tr of body.rows) {
+            if (tr === row) break;
+            y += tr.offsetHeight || 0;
+          }
+        }
+        let x = 0;
+        for (const td of row.cells) {
+          if (td === cell) break;
+          x += td.offsetWidth || 0;
+        }
+        const viewH = Math.max(1, tableWrap.clientHeight - headH);
+        const viewW = Math.max(1, tableWrap.clientWidth);
+        tableWrap.scrollTop = Math.max(0, Math.min(y - headH - viewH * 0.3, tableWrap.scrollHeight - tableWrap.clientHeight));
+        tableWrap.scrollLeft = Math.max(0, Math.min(x - viewW * 0.3, tableWrap.scrollWidth - tableWrap.clientWidth));
+        const box = tableWrap.getBoundingClientRect();
+        const rect = cell.getBoundingClientRect();
+        const visible = rect.top >= box.top + headH - 2 && rect.bottom <= box.bottom + 2
+          && rect.left >= box.left - 2 && rect.right <= box.right + 2;
+        if (!visible) cell.scrollIntoView({ block: "center", inline: "center" });
+      }
+      function paintFindHits() {
+        for (const cell of document.querySelectorAll("td.is-find-hit, td.is-find-current")) {
+          cell.classList.remove("is-find-hit", "is-find-current");
+        }
+        const matches = state.find.matches || [];
+        const current = matches[state.find.index];
+        for (const hit of matches) {
+          if (hit.sheet !== state.sheet) continue;
+          const cell = document.querySelector('td[data-row="' + hit.row + '"][data-col="' + hit.col + '"]');
+          if (!cell) continue;
+          cell.classList.add("is-find-hit");
+        }
+        if (current && current.sheet === state.sheet) {
+          const cell = document.querySelector('td[data-row="' + current.row + '"][data-col="' + current.col + '"]');
+          if (cell) {
+            cell.classList.add("is-find-current");
+            selectCell(cell.classList.contains("editable") ? cell : selected);
+            if (cell.classList.contains("editable")) selectCell(cell);
+            requestAnimationFrame(() => {
+              scrollCellIntoView(cell);
+              setTimeout(() => scrollCellIntoView(cell), 60);
+              setTimeout(() => scrollCellIntoView(cell), 180);
+            });
+          }
+        }
+        paintFindCount();
+      }
+      function gotoFind(delta) {
+        const matches = state.find.matches || [];
+        if (!matches.length) return;
+        const total = matches.length;
+        let index = Number(state.find.index);
+        if (!Number.isFinite(index) || index < 0) index = delta > 0 ? -1 : 0;
+        index = (index + delta + total) % total;
+        state.find.index = index;
+        const hit = matches[index];
+        vscode.setState(state);
+        paintFindCount();
+        if (hit.sheet !== state.sheet) {
+          state.pendingFocus = { row: hit.row, col: hit.col };
+          state.sheet = hit.sheet;
+          vscode.setState(state);
+          vscode.postMessage({ type: "selectSheet", sheet: hit.sheet });
+          return;
+        }
+        paintFindHits();
+      }
+      function runFind(query, keepIndex) {
+        const q = String(query || "").trim();
+        state.find.query = q;
+        if (!q) {
+          state.find.matches = [];
+          state.find.index = -1;
+          vscode.setState(state);
+          if (findInput) findInput.value = "";
+          paintFindHits();
+          return;
+        }
+        const matches = collectMatches(q);
+        const prev = keepIndex ? Number(state.find.index) : -1;
+        state.find.matches = matches;
+        state.find.index = matches.length
+          ? (prev >= 0 && prev < matches.length ? prev : 0)
+          : -1;
+        vscode.setState(state);
+        if (findInput && findInput.value !== q) findInput.value = q;
+        if (!matches.length) {
+          paintFindHits();
+          return;
+        }
+        const hit = matches[state.find.index];
+        if (hit.sheet !== state.sheet) {
+          state.pendingFocus = { row: hit.row, col: hit.col };
+          state.sheet = hit.sheet;
+          vscode.setState(state);
+          vscode.postMessage({ type: "selectSheet", sheet: hit.sheet });
+          return;
+        }
+        paintFindHits();
+      }
+      if (findInput) {
+        findInput.value = state.find.query || "";
+        let findTimer = 0;
+        findInput.addEventListener("input", () => {
+          window.clearTimeout(findTimer);
+          findTimer = window.setTimeout(() => runFind(findInput.value, false), 200);
+        });
+        findInput.addEventListener("keydown", (event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            runFind("", false);
+            return;
+          }
+          if (event.key === "Enter") {
+            event.preventDefault();
+            const q = String(findInput.value || "").trim();
+            if (!q) { runFind("", false); return; }
+            if (state.find.query === q && (state.find.matches || []).length) {
+              gotoFind(event.shiftKey ? -1 : 1);
+              return;
+            }
+            runFind(q, false);
+          }
+        });
+      }
+      document.getElementById("findClear")?.addEventListener("click", () => {
+        runFind("", false);
+        findInput?.focus();
+      });
+      findPrev?.addEventListener("click", () => gotoFind(-1));
+      findNext?.addEventListener("click", () => gotoFind(1));
+      // 切 Sheet 后恢复定位
+      if (state.pendingFocus) {
+        const pending = state.pendingFocus;
+        delete state.pendingFocus;
+        vscode.setState(state);
+        requestAnimationFrame(() => {
+          const cell = document.querySelector('td[data-row="' + pending.row + '"][data-col="' + pending.col + '"]');
+          if (cell && cell.classList.contains("editable")) selectCell(cell);
+          paintFindHits();
+        });
+      } else {
+        paintFindHits();
+      }
+
       document.addEventListener("keydown", (event) => {
         // 全局 Ctrl+S：任何位置都能存（先提交正在编辑的单元格）
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
@@ -805,8 +1040,15 @@ function renderExcelHtml(document: ExcelDocument): string {
           vscode.postMessage({ type: "saveNow" });
           return;
         }
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+          event.preventDefault();
+          findInput?.focus();
+          findInput?.select();
+          return;
+        }
         // 没在编辑时的键盘导航：方向键移动选中，回车 / F2 进入编辑
         if (!editing) {
+          if (event.target === findInput) return;
           const cell = selected;
           if (!cell) return;
           if (event.key === "Enter" || event.key === "F2") {
@@ -824,7 +1066,7 @@ function renderExcelHtml(document: ExcelDocument): string {
             );
             if (next) {
               selectCell(next);
-              next.scrollIntoView({ block: "nearest", inline: "nearest" });
+              scrollCellIntoView(next);
             }
           }
           if (event.key === "Delete" || event.key === "Backspace") {
@@ -890,8 +1132,27 @@ function renderExcelHtml(document: ExcelDocument): string {
           return;
         }
       });
-      // 滚轮直达内容区，避免被 webview 外层吞掉
-      document.querySelector(".wrap")?.addEventListener("wheel", (e) => e.stopPropagation(), { passive: true });
+      // 滚轮直达内容区；按住右键 + 滚轮 = 横向滚动
+      const tableWrapEl = document.querySelector(".wrap");
+      let rightPan = false;
+      let rightScrolled = false;
+      tableWrapEl?.addEventListener("mousedown", (e) => {
+        if (e.button === 2) { rightPan = true; rightScrolled = false; }
+      });
+      window.addEventListener("mouseup", (e) => { if (e.button === 2) rightPan = false; });
+      tableWrapEl?.addEventListener("mouseleave", () => { rightPan = false; });
+      tableWrapEl?.addEventListener("contextmenu", (e) => {
+        if (rightScrolled) { e.preventDefault(); rightScrolled = false; }
+      });
+      tableWrapEl?.addEventListener("wheel", (e) => {
+        e.stopPropagation();
+        const holdRight = rightPan || (e.buttons & 2) === 2;
+        if (!holdRight) return;
+        e.preventDefault();
+        rightScrolled = true;
+        const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+        tableWrapEl.scrollLeft += delta;
+      }, { passive: false });
       void uriKey;
       void readonly;
     </script>
@@ -1125,6 +1386,13 @@ function renderDocsHtml(document: DocsDocument): string {
             <button type="button" data-mode="edit">编辑</button>
             <button type="button" data-mode="split">分栏</button>
           </div>`}
+      <div class="find-nav" title="在当前文档中查找">
+        <input id="findInput" type="search" placeholder="查找… Ctrl+F" autocomplete="off" spellcheck="false" />
+        <button type="button" id="findClear" title="清空查找">✕</button>
+        <button type="button" id="findPrev" title="上一处" disabled>▲</button>
+        <span class="find-count" id="findCount">0 / 0</span>
+        <button type="button" id="findNext" title="下一处" disabled>▼</button>
+      </div>
       <button class="primary" type="button" data-open-client>在 DocsView Client 中编辑</button>
     </div>
     <div id="stage" class="single">
@@ -1141,7 +1409,14 @@ function renderDocsHtml(document: DocsDocument): string {
       const previewWrap = document.getElementById("previewWrap");
       const editorEl = document.getElementById("editor");
       const stage = document.getElementById("stage");
+      const findInput = document.getElementById("findInput");
+      const findCount = document.getElementById("findCount");
+      const findPrev = document.getElementById("findPrev");
+      const findNext = document.getElementById("findNext");
       let text = ${JSON.stringify(text)};
+      let findHits = [];
+      let findIndex = -1;
+      let findQuery = "";
       editorEl.value = text;
       function escapeHtml(v) {
         return String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -1219,11 +1494,126 @@ function renderDocsHtml(document: DocsDocument): string {
         text = editorEl.value;
         if (stage.classList.contains("single") === false) paint();
       });
+      function sourceText() {
+        return editorEl.classList.contains("hidden") ? text : editorEl.value;
+      }
+      function paintFindCount() {
+        const total = findHits.length;
+        if (findCount) findCount.textContent = total ? ((findIndex >= 0 ? findIndex + 1 : 1) + " / " + total) : "0 / 0";
+        if (findPrev) findPrev.disabled = !total;
+        if (findNext) findNext.disabled = !total;
+      }
+      function revealFind(pos) {
+        if (pos == null || pos < 0 || !findQuery) return;
+        const src = sourceText();
+        const line = src.slice(0, pos).split("\\n").length;
+        if (!editorEl.classList.contains("hidden")) {
+          editorEl.focus();
+          editorEl.selectionStart = pos;
+          editorEl.selectionEnd = pos + findQuery.length;
+          editorEl.scrollTop = Math.max(0, (line - 3) * 22);
+          return;
+        }
+        paint();
+        const needle = findQuery.toLowerCase();
+        const walker = document.createTreeWalker(previewEl, NodeFilter.SHOW_TEXT);
+        let node, nth = 0, target = null;
+        while ((node = walker.nextNode())) {
+          const value = String(node.nodeValue || "");
+          let from = 0;
+          while (true) {
+            const at = value.toLowerCase().indexOf(needle, from);
+            if (at < 0) break;
+            if (nth === findIndex) {
+              try {
+                const range = document.createRange();
+                range.setStart(node, at);
+                range.setEnd(node, at + findQuery.length);
+                const mark = document.createElement("mark");
+                mark.className = "find-mark current";
+                range.surroundContents(mark);
+                target = mark;
+              } catch (e) {
+                target = node.parentElement;
+              }
+              nth += 1;
+              break;
+            }
+            nth += 1;
+            from = at + Math.max(1, findQuery.length);
+          }
+          if (target) break;
+        }
+        if (target && previewWrap) {
+          const box = previewWrap.getBoundingClientRect();
+          const rect = target.getBoundingClientRect();
+          previewWrap.scrollTop = Math.max(0, previewWrap.scrollTop + (rect.top - box.top) - box.height * 0.3);
+          try { target.scrollIntoView({ block: "center", inline: "nearest" }); } catch (e) { /* ignore */ }
+        }
+      }
+      function runFind(query, dir) {
+        findQuery = String(query || "").trim();
+        if (!findQuery) {
+          findHits = [];
+          findIndex = -1;
+          if (findInput) findInput.value = "";
+          paintFindCount();
+          paint();
+          return;
+        }
+        const hay = sourceText().toLowerCase();
+        const needle = findQuery.toLowerCase();
+        const hits = [];
+        let at = hay.indexOf(needle);
+        while (at >= 0) {
+          hits.push(at);
+          at = hay.indexOf(needle, at + Math.max(1, needle.length));
+        }
+        findHits = hits;
+        if (!hits.length) {
+          findIndex = -1;
+          paintFindCount();
+          return;
+        }
+        if (!dir) {
+          if (findIndex < 0 || findIndex >= hits.length) findIndex = 0;
+        } else {
+          if (findIndex < 0) findIndex = dir > 0 ? -1 : 0;
+          findIndex = (findIndex + dir + hits.length) % hits.length;
+        }
+        paintFindCount();
+        revealFind(hits[findIndex]);
+      }
+      let findTimer = 0;
+      findInput?.addEventListener("input", () => {
+        window.clearTimeout(findTimer);
+        findTimer = window.setTimeout(() => runFind(findInput.value, 0), 200);
+      });
+      findInput?.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") { event.preventDefault(); runFind("", 0); return; }
+        if (event.key === "Enter") {
+          event.preventDefault();
+          const q = String(findInput.value || "").trim();
+          if (!q) { runFind("", 0); return; }
+          if (findQuery === q && findHits.length) runFind(q, event.shiftKey ? -1 : 1);
+          else runFind(q, 0);
+        }
+      });
+      document.getElementById("findClear")?.addEventListener("click", () => { runFind("", 0); findInput?.focus(); });
+      findPrev?.addEventListener("click", () => runFind(findQuery || findInput?.value || "", -1));
+      findNext?.addEventListener("click", () => runFind(findQuery || findInput?.value || "", 1));
+      paintFindCount();
       document.addEventListener("keydown", (event) => {
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
           event.preventDefault();
           if (readonly) return;
           vscode.postMessage({ type: "save", text: editorEl.value });
+          return;
+        }
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+          event.preventDefault();
+          findInput?.focus();
+          findInput?.select();
         }
       });
       setMode(readonly ? "preview" : (isMarkdown ? "split" : "preview"));

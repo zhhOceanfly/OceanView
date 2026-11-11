@@ -4,7 +4,7 @@
 
 Rider 等环境可用 npm CLI：`npx @zhhoceanfly/oceanview` 在浏览器打开同一套 Client。
 
-当前扩展版本：**0.1.1** · CLI：`@zhhoceanfly/oceanview@0.1.1` · DBX（OceanView）：**0.1.1**
+当前扩展版本：**0.1.2** · CLI：`@zhhoceanfly/oceanview@0.1.2` · DBX（OceanView）：**0.1.2**
 
 ## 功能概览
 
@@ -38,6 +38,14 @@ Rider 等环境可用 npm CLI：`npx @zhhoceanfly/oceanview` 在浏览器打开�
 - **grpcurl**：一键生成命令（仅 gRPC）
 - **压测**：轻量并发；`ghz` 仅在 gRPC 时显示
 - **链路调试**：画布拖拽、连线、变量提取、导入/导出配置
+
+### ExcelView / DocsView / DbView
+
+- **ExcelView**：浏览工作区 Excel / CSV；Client 与直接打开的 Excel 编辑器均支持表内查找（`Ctrl+F` / `Enter` 下一处），命中滚入可视区，可跨 Sheet
+- **DocsView**：浏览 Markdown；Client 与直接打开的文档编辑器同样支持查找框与上下箭头
+- **DbView**：按 SQL 文件浏览表结构，查询与编辑数据
+
+首次用 Tab 搜索 Excel 时会后台建索引；目录较大时可能短暂显示「正在索引 / 搜索 Excel…」，完成后即可命中。
 
 ## 快速开始
 

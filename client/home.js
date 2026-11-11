@@ -28,6 +28,13 @@
     /** Excel 差异对比：当前对比结果与是否打开 */
     excelDiff: null,
     excelDiffOpen: false,
+    /** 当前工作簿搜索命中：{ query, items:[{sheetId,sheet,row,col}], index } */
+    excelMatch: null,
+    /** 表内查找框文案（可与 match.query 同步） */
+    excelFindQuery: "",
+    excelFindTimer: 0,
+    /** 待定位的单元格（防 excelPage 竞态丢 focus） */
+    pendingExcelFocus: null,
     docsPage: 0,
     docsPageSize: 60,
     searchTimer: 0,
@@ -116,6 +123,7 @@
     if (data.type === "excelCatalog") applyExcelCatalog(data.payload);
     if (data.type === "excelPage") applyExcelPage(data.payload);
     if (data.type === "excelSearch") applyExcelSearch(data.payload);
+    if (data.type === "excelMatches") applyExcelMatches(data.payload);
     if (data.type === "excelUpdate") applyExcelUpdate(data.payload);
     if (data.type === "excelDiff") applyExcelDiff(data.payload);
     if (data.type === "gitChanges") applyGitChanges(data.payload);
@@ -183,9 +191,12 @@
   // ===== Excel =====
   let hasCatalog = false;
   let excelScanTimer = 0;
+  /** 仅手动刷新目录时，catalog 回包后重载当前打开的表 */
+  let catalogReloadPage = false;
 
   function ensureExcelCatalog(force = false) {
     if (hasCatalog && !force) return;
+    if (force) catalogReloadPage = true;
     const list = $("excelList");
     if (list && !state.sheets.length) list.innerHTML = `<div class="excel-empty">扫描中…</div>`;
     if (!post("excelCatalog", { force })) {
@@ -208,9 +219,15 @@
     window.clearTimeout(excelScanTimer);
     state.sheets = Array.isArray(catalog?.sheets) ? catalog.sheets : [];
     renderExcelList();
-    if (state.activeSheetId && state.sheets.some((sheet) => sheet.id === state.activeSheetId)) {
+    // 手动刷新时才重载当前页；搜索定位打开时不要用不带 focus 的 page 盖掉高亮
+    if (
+      catalogReloadPage
+      && state.activeSheetId
+      && state.sheets.some((sheet) => sheet.id === state.activeSheetId)
+    ) {
       post("excelPage", { id: state.activeSheetId });
     }
+    catalogReloadPage = false;
     if (catalog?.warnings?.length) {
       // 只在有问题时提示，不打断使用
       console.warn("[OceanView] excel warnings:", catalog.warnings.slice(0, 5));
@@ -272,9 +289,128 @@
     const bar = $("excelSheets");
     if (!bar) return;
     const sheets = sheetsOfFile(state.activeFile);
-    bar.innerHTML = sheets.map((sheet) => `
-      <button class="excel-sheet-tab${sheet.id === state.activeSheetId ? " active" : ""}" type="button" data-sheet-id="${esc(encodeURIComponent(sheet.id))}" title="${esc(sheet.sheet)}">${esc(sheet.sheet)}</button>`).join("");
+    const match = state.excelMatch;
+    const findQuery = state.excelFindQuery || match?.query || "";
+    const prevInput = bar.querySelector("#excelFindInput");
+    const keepFocus = document.activeElement === prevInput;
+    const selStart = prevInput?.selectionStart ?? findQuery.length;
+    const selEnd = prevInput?.selectionEnd ?? findQuery.length;
+    const countBySheet = new Map();
+    for (const item of match?.items || []) {
+      countBySheet.set(item.sheetId, (countBySheet.get(item.sheetId) || 0) + 1);
+    }
+    const tabs = sheets.map((sheet) => {
+      const n = countBySheet.get(sheet.id) || 0;
+      const badge = n ? `<span class="excel-sheet-match">${n}</span>` : "";
+      return `<button class="excel-sheet-tab${sheet.id === state.activeSheetId ? " active" : ""}" type="button" data-sheet-id="${esc(encodeURIComponent(sheet.id))}" title="${esc(sheet.sheet)}${n ? ` · ${n} 处匹配` : ""}">${esc(sheet.sheet)}${badge}</button>`;
+    }).join("");
+    const total = match?.items?.length || 0;
+    const hasMatches = total > 0;
+    const countText = hasMatches
+      ? `${Math.min((match.index || 0) + 1, total)} / ${total}`
+      : "0 / 0";
+    // 有打开的表时始终显示查找框；清空输入即可去掉角标与导航计数
+    const nav = sheets.length
+      ? `<div class="excel-match-nav" title="在当前 Excel 文件中查找（可跨 Sheet）">
+          <input id="excelFindInput" class="excel-find-input" type="search" placeholder="查找… Ctrl+F"
+            value="${esc(findQuery)}" autocomplete="off" spellcheck="false" />
+          <button type="button" class="icon-btn" data-excel-find-clear title="清空查找">✕</button>
+          <button type="button" class="icon-btn" data-excel-match-step="-1" title="上一处" ${hasMatches ? "" : "disabled"}>▲</button>
+          <span class="excel-match-count">${countText}</span>
+          <button type="button" class="icon-btn" data-excel-match-step="1" title="下一处" ${hasMatches ? "" : "disabled"}>▼</button>
+        </div>`
+      : "";
+    bar.innerHTML = `<div class="excel-sheet-tabs">${tabs}</div>${nav}`;
     bar.querySelector(".excel-sheet-tab.active")?.scrollIntoView({ inline: "nearest", block: "nearest" });
+    const input = bar.querySelector("#excelFindInput");
+    if (input && keepFocus) {
+      input.focus();
+      try { input.setSelectionRange(selStart, selEnd); } catch { /* ignore */ }
+    }
+  }
+
+  function clearExcelMatches(options = {}) {
+    const keepQuery = Boolean(options.keepQuery);
+    state.excelMatch = null;
+    if (!keepQuery) state.excelFindQuery = "";
+    renderSheetTabs();
+    if (state.page) {
+      applyExcelPage({ ...state.page, focusRow: 0, focusCol: -1 });
+    }
+  }
+
+  function applyExcelMatches(payload) {
+    const items = Array.isArray(payload?.matches) ? payload.matches : [];
+    const query = String(payload?.query || "");
+    state.excelFindQuery = query;
+    if (!items.length) {
+      state.excelMatch = null;
+      renderSheetTabs();
+      if (state.page) applyExcelPage({ ...state.page, focusRow: 0, focusCol: -1 });
+      return;
+    }
+    const focusRow = Number(state.page?.focusRow || 0);
+    const focusCol = Number(state.page?.focusCol);
+    let index = items.findIndex((item) =>
+      item.sheetId === state.activeSheetId
+      && Number(item.row) === focusRow
+      && (Number.isFinite(focusCol) && focusCol >= 0 ? Number(item.col) === focusCol : true),
+    );
+    if (index < 0) {
+      index = items.findIndex((item) => item.sheetId === state.activeSheetId && Number(item.row) === focusRow);
+    }
+    if (index < 0) index = 0;
+    state.excelMatch = { query, items, index };
+    renderSheetTabs();
+    focusExcelHit(items[index]);
+  }
+
+  function loadExcelMatches(query, sheetId) {
+    const q = String(query || "").trim();
+    state.excelFindQuery = q;
+    if (!q || !sheetId) {
+      clearExcelMatches({ keepQuery: Boolean(q) });
+      return;
+    }
+    post("excelMatches", { query: q, sheetId });
+  }
+
+  function scheduleExcelFind(query) {
+    state.excelFindQuery = String(query || "");
+    window.clearTimeout(state.excelFindTimer);
+    state.excelFindTimer = window.setTimeout(() => {
+      const q = String(state.excelFindQuery || "").trim();
+      if (!q) {
+        clearExcelMatches();
+        return;
+      }
+      const sheetId = state.activeSheetId || sheetsOfFile(state.activeFile)[0]?.id;
+      if (!sheetId) return;
+      loadExcelMatches(q, sheetId);
+    }, 220);
+  }
+
+  /** 上下箭头：在同文件全部命中间跳转，必要时自动切 Sheet */
+  function stepExcelMatch(delta) {
+    const match = state.excelMatch;
+    if (!match?.items?.length) return;
+    const total = match.items.length;
+    const next = (match.index + Number(delta || 0) + total) % total;
+    match.index = next;
+    renderSheetTabs();
+    focusExcelHit(match.items[next]);
+  }
+
+  function focusExcelFind(selectAll = true) {
+    if (state.view !== "excel") {
+      openTab("excel", VIEW_LABEL.excel);
+      setView("excel");
+    }
+    renderSheetTabs();
+    const input = $("excelFindInput");
+    if (!input) return;
+    input.focus();
+    if (selectAll) input.select();
   }
 
   /** Excel 差异对比：当前文件 vs git HEAD，左右两栏按行对齐 */
@@ -386,16 +522,25 @@
     if (!relative) return;
     const sheets = sheetsOfFile(relative);
     if (!sheets.length) return;
+    // 侧栏换文件时清掉上一份文件的匹配导航
+    if (relative !== state.activeFile) clearExcelMatches();
     const current = sheets.find((sheet) => sheet.id === state.activeSheetId);
     selectSheet((current || sheets[0]).id);
   }
 
-  function selectSheet(id, focusRow = 0) {
+  function selectSheet(id, focusRow = 0, focusCol = -1) {
     if (!id) return;
     const sheet = state.sheets.find((item) => item.id === id);
     if (!sheet) return;
-    state.activeFile = fileKey(sheet);
+    const nextFile = fileKey(sheet);
+    if (state.excelMatch && state.activeFile && nextFile !== state.activeFile) {
+      clearExcelMatches();
+    }
+    state.activeFile = nextFile;
     state.activeSheetId = id;
+    const row = Number(focusRow) || 0;
+    const col = Number.isFinite(Number(focusCol)) ? Number(focusCol) : -1;
+    state.pendingExcelFocus = row > 0 ? { sheetId: id, row, col } : null;
     if (state.excelDiffOpen) state.excelDiffOpen = false;
     $("excelDiffView")?.classList.add("hidden");
     $("excelSheets")?.classList.remove("hidden");
@@ -407,7 +552,170 @@
     if (title) title.textContent = sheet.fileName || sheet.sheet;
     const meta = $("excelMeta");
     if (meta) meta.textContent = sheet.relative;
-    post("excelPage", { id, focusRow });
+    post("excelPage", { id, focusRow: row, focusCol: col });
+  }
+
+  function clampScroll(value, max) {
+    if (!Number.isFinite(value)) return 0;
+    return Math.max(0, Math.min(value, Math.max(0, max)));
+  }
+
+  /** 找到真正产生滚动条的祖先（ExcelView 里偶发不是 #excelTableWrap 本身） */
+  function scrollParentsOf(node) {
+    const out = [];
+    let el = node;
+    while (el && el !== document.body) {
+      if (el instanceof HTMLElement) {
+        const style = window.getComputedStyle(el);
+        const ox = style.overflowX;
+        const oy = style.overflowY;
+        const canX = (ox === "auto" || ox === "scroll" || ox === "overlay") && el.scrollWidth > el.clientWidth + 1;
+        const canY = (oy === "auto" || oy === "scroll" || oy === "overlay") && el.scrollHeight > el.clientHeight + 1;
+        if (canX || canY || el.id === "excelTableWrap") out.push(el);
+      }
+      el = el.parentElement;
+    }
+    return out;
+  }
+
+  function cellIsVisibleIn(scroller, cell, headH = 0) {
+    const box = scroller.getBoundingClientRect();
+    const rect = cell.getBoundingClientRect();
+    return rect.top >= box.top + headH - 2
+      && rect.bottom <= box.bottom + 2
+      && rect.left >= box.left - 2
+      && rect.right <= box.right + 2;
+  }
+
+  /**
+   * 按单元格几何位置把滚动条拨到能看见它的位置。
+   * 1) 累加行高/列宽写 #excelTableWrap
+   * 2) 对所有可滚动祖先按 getBoundingClientRect 差值微调
+   * 3) 仍不可见则 scrollIntoView（与直接打开 Excel 的兜底一致）
+   */
+  function scrollExcelTarget(wrap, attempts = 0) {
+    if (!wrap) return;
+    const focusRow = Number(state.page?.focusRow || state.pendingExcelFocus?.row || 0);
+    const focusCol = Number(state.page?.focusCol ?? state.pendingExcelFocus?.col);
+    let cell = null;
+    if (focusRow > 0 && Number.isFinite(focusCol) && focusCol >= 0) {
+      cell = wrap.querySelector(`td.excel-cell[data-row="${focusRow}"][data-col="${focusCol}"]`);
+    }
+    if (!cell && focusRow > 0) {
+      cell = wrap.querySelector(`td.excel-cell[data-row="${focusRow}"]`);
+    }
+    if (!cell) {
+      cell = wrap.querySelector("td.excel-cell.is-target-cell")
+        || wrap.querySelector("tr.excel-row.is-target td.excel-cell")
+        || wrap.querySelector("tr.excel-row.is-target");
+    }
+    if (!cell) {
+      if (attempts < 30) window.setTimeout(() => scrollExcelTarget(wrap, attempts + 1), 40);
+      return;
+    }
+    const row = cell.closest("tr");
+    const table = cell.closest("table") || wrap.querySelector("table");
+    if (!row || !table) return;
+    if (wrap.clientHeight < 32 || table.offsetHeight < 32) {
+      if (attempts < 30) window.setTimeout(() => scrollExcelTarget(wrap, attempts + 1), 40);
+      return;
+    }
+
+    const headH = table.tHead?.offsetHeight || 0;
+    const tbody = table.tBodies?.[0];
+    let y = headH;
+    if (tbody) {
+      for (const tr of tbody.rows) {
+        if (tr === row) break;
+        y += tr.offsetHeight || 0;
+      }
+    }
+    let x = 0;
+    if (cell.tagName === "TD") {
+      for (const td of row.cells) {
+        if (td === cell) break;
+        x += td.offsetWidth || 0;
+      }
+    }
+
+    const maxTop = Math.max(0, wrap.scrollHeight - wrap.clientHeight);
+    const maxLeft = Math.max(0, wrap.scrollWidth - wrap.clientWidth);
+    const viewH = Math.max(1, wrap.clientHeight - headH);
+    const viewW = Math.max(1, wrap.clientWidth);
+    // 目标：格子大约出现在可视区 25%~35% 处
+    wrap.scrollTop = clampScroll(y - headH - viewH * 0.3, maxTop);
+    wrap.scrollLeft = clampScroll(x - viewW * 0.3, maxLeft);
+
+    for (const scroller of scrollParentsOf(cell)) {
+      const box = scroller.getBoundingClientRect();
+      const rect = cell.getBoundingClientRect();
+      const padTop = scroller === wrap || scroller.id === "excelTableWrap" ? headH : 0;
+      const scrollerViewH = Math.max(1, scroller.clientHeight - padTop);
+      const scrollerViewW = Math.max(1, scroller.clientWidth);
+      if (!cellIsVisibleIn(scroller, cell, padTop)) {
+        scroller.scrollTop = clampScroll(
+          scroller.scrollTop + (rect.top - box.top) - padTop - scrollerViewH * 0.3,
+          scroller.scrollHeight - scroller.clientHeight,
+        );
+        scroller.scrollLeft = clampScroll(
+          scroller.scrollLeft + (rect.left - box.left) - scrollerViewW * 0.3,
+          scroller.scrollWidth - scroller.clientWidth,
+        );
+      }
+    }
+
+    if (!cellIsVisibleIn(wrap, cell, headH)) {
+      try {
+        cell.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
+      } catch {
+        try { cell.scrollIntoView(true); } catch { /* ignore */ }
+      }
+    }
+
+    if (!cellIsVisibleIn(wrap, cell, headH) && attempts < 20) {
+      window.setTimeout(() => scrollExcelTarget(wrap, attempts + 1), 50);
+    }
+  }
+
+  function revealExcelTarget(wrap) {
+    if (!wrap) return;
+    const run = () => scrollExcelTarget(wrap, 0);
+    void wrap.offsetHeight;
+    run();
+    requestAnimationFrame(() => {
+      void wrap.offsetHeight;
+      requestAnimationFrame(run);
+    });
+    window.setTimeout(run, 40);
+    window.setTimeout(run, 120);
+    window.setTimeout(run, 280);
+    window.setTimeout(run, 500);
+    if (typeof ResizeObserver === "function") {
+      const ro = new ResizeObserver(() => run());
+      ro.observe(wrap);
+      const table = wrap.querySelector("table");
+      if (table) ro.observe(table);
+      window.setTimeout(() => ro.disconnect(), 1200);
+    }
+  }
+
+  /** 当前页已包含目标行时本地高亮+滚动，避免无意义的 excelPage 往返把定位冲掉 */
+  function pageContainsRow(page, row) {
+    const target = Number(row);
+    return Boolean(page?.rows?.some((item) => Number(item.row) === target));
+  }
+
+  function focusExcelHit(hit) {
+    if (!hit?.sheetId) return;
+    const row = Number(hit.row) || 0;
+    const col = Number.isFinite(Number(hit.col)) ? Number(hit.col) : -1;
+    state.pendingExcelFocus = { sheetId: hit.sheetId, row, col };
+    const page = state.page;
+    if (page && page.id === hit.sheetId && row > 0 && pageContainsRow(page, row)) {
+      applyExcelPage({ ...page, focusRow: row, focusCol: col });
+      return;
+    }
+    selectSheet(hit.sheetId, row, col);
   }
 
   function applyExcelPage(page) {
@@ -417,18 +725,43 @@
       wrap.innerHTML = `<div class="excel-empty">表读取失败或已被移动</div>`;
       return;
     }
+    // 若宿主回包装丢了 focus，用 pending 补上（竞态时常见）
+    const pending = state.pendingExcelFocus;
+    if (pending && pending.sheetId === page.id) {
+      if (!(Number(page.focusRow) > 0) && pending.row > 0) {
+        page = { ...page, focusRow: pending.row, focusCol: pending.col };
+      }
+    }
     state.page = page;
+    const focusRow = Number(page.focusRow) || 0;
+    const focusCol = Number(page.focusCol);
+    const matchItems = state.excelMatch?.items || [];
     const head = `<tr><th class="excel-rowno">#</th>${page.columns
       .map((col) => `<th title="列 ${esc(col.letter)}">${esc(col.name)}</th>`)
       .join("")}</tr>`;
     const body = page.rows.map((row) => {
-      const target = page.focusRow && row.row === page.focusRow ? " is-target" : "";
-      return `<tr class="excel-row${target}"><td class="excel-rowno">${row.row}</td>${page.columns
+      const rowNo = Number(row.row);
+      const target = focusRow > 0 && rowNo === focusRow ? " is-target" : "";
+      return `<tr class="excel-row${target}" data-excel-row="${rowNo}"><td class="excel-rowno">${rowNo}</td>${page.columns
         .map((_, index) => {
           const value = row.cells[index] ?? "";
           const editable = state.excelEditing && !/\.xls$/i.test(page.relative || "");
-          return `<td class="excel-cell" ${editable ? 'contenteditable="true"' : ""} spellcheck="false"
-            data-row="${row.row}" data-col="${index}">${esc(value)}</td>`;
+          const isFocusCell = Boolean(target)
+            && Number.isFinite(focusCol)
+            && focusCol >= 0
+            && index === focusCol;
+          const isMatchCell = matchItems.some((item) =>
+            item.sheetId === page.id
+            && Number(item.row) === rowNo
+            && Number(item.col) === index,
+          );
+          const cellCls = [
+            "excel-cell",
+            isFocusCell ? "is-target-cell" : "",
+            isMatchCell && !isFocusCell ? "is-match-cell" : "",
+          ].filter(Boolean).join(" ");
+          return `<td class="${cellCls}" ${editable ? 'contenteditable="true"' : ""} spellcheck="false"
+            data-row="${rowNo}" data-col="${index}">${esc(value)}</td>`;
         })
         .join("")}</tr>`;
     }).join("");
@@ -441,9 +774,11 @@
       const to = page.offset + page.rows.length;
       meta.textContent = `${page.relative} · 第 ${from}-${to} 行 / 共 ${page.total} 行${page.truncated ? "（已截断）" : ""}`;
     }
-    requestAnimationFrame(() => {
-      wrap.querySelector(".excel-row.is-target")?.scrollIntoView({ block: "center" });
-    });
+    if (focusRow > 0) {
+      wrap.scrollTop = 0;
+      wrap.scrollLeft = 0;
+      revealExcelTarget(wrap);
+    }
   }
 
   /** 单元格编辑：失焦或回车时先记到本地，Ctrl+S / 保存按钮再落盘 */
@@ -460,6 +795,14 @@
     if (value === original) state.excelPending.delete(key);
     else state.excelPending.set(key, { row, col, value });
     syncExcelSave();
+  }
+
+  function applyExcelEditability() {
+    const editable = state.excelEditing;
+    for (const cell of document.querySelectorAll("#excelTableWrap .excel-cell")) {
+      if (editable) cell.setAttribute("contenteditable", "true");
+      else cell.removeAttribute("contenteditable");
+    }
   }
 
   function syncExcelSave() {
@@ -511,18 +854,22 @@
     setExcelStatus(`已保存 · ${new Date().toLocaleTimeString("zh-CN", { hour12: false })}`);
   }
 
-  function applyExcelSearch(hits) {
-    const list = Array.isArray(hits) ? hits : [];
-    // Tab 全局搜索：直接回调给它
-    if (pendingSearch) {
-      const cb = pendingSearch;
+  function applyExcelSearch(payload) {
+    // 兼容旧回包（纯数组）和新回包（{ requestId, hits }）
+    const list = Array.isArray(payload)
+      ? payload
+      : (Array.isArray(payload?.hits) ? payload.hits : []);
+    const requestId = Array.isArray(payload) ? NaN : Number(payload?.requestId);
+    const hasRequestId = Number.isFinite(requestId);
+    // 按 requestId 对齐，避免首次建索引时旧回包冲掉新查询 / 首页与 Tab 互抢
+    if (pendingSearch && (!hasRequestId || pendingSearch.seq === requestId)) {
+      const cb = pendingSearch.cb;
       pendingSearch = null;
       try { cb(list); } catch { /* ignore */ }
-      return;
     }
-    // 首页搜索
-    if (pendingHomeExcel) {
-      pendingHomeExcel = false;
+    if (pendingHomeExcel && (!hasRequestId || pendingHomeExcel.seq === requestId)) {
+      pendingHomeExcel = null;
+      state.homeExcelHits = list;
       renderHomeHits(state.homeProtoHits, list);
     }
   }
@@ -567,8 +914,14 @@
     clearTimeout(state.searchTimer);
     state.searchTimer = window.setTimeout(() => {
       if (seq !== state.searchSeq) return;
-      pendingHomeExcel = true;
-      if (!post("excelSearch", { query }) && state.homeProtoHits.length) pendingHomeExcel = false;
+      const searchId = ++excelSearchSeq;
+      pendingHomeExcel = { seq: searchId };
+      if (!post("excelSearch", { query, requestId: searchId })) {
+        pendingHomeExcel = null;
+        if (!state.homeProtoHits.length) {
+          renderHomeHits(state.homeProtoHits, []);
+        }
+      }
       window.OceanViewDocs?.search?.(query, (hits) => {
         if (seq !== state.searchSeq) return;
         state.homeDocsHits = Array.isArray(hits) ? hits : [];
@@ -656,15 +1009,19 @@
     }
   }
 
-  /** 打开 Excel 表：已开则复用标签 */
-  function openExcelSheet(sheetId, row = 0) {
+  /** 打开 Excel 表：已开则复用标签；query 有值时拉取本文件全部单元格命中供上下跳转 */
+  function openExcelSheet(sheetId, row = 0, col = -1, query = "") {
     if (!sheetId) return;
     openTab("excel", VIEW_LABEL.excel);
     setView("excel");
     ensureExcelCatalog();
+    const q = String(query || "").trim();
+    state.excelFindQuery = q;
     const trySelect = (attempt = 0) => {
       if (state.sheets.some((item) => item.id === sheetId)) {
-        selectSheet(sheetId, row);
+        selectSheet(sheetId, row, col);
+        if (q) loadExcelMatches(q, sheetId);
+        else clearExcelMatches();
         return;
       }
       if (attempt < 30) window.setTimeout(() => trySelect(attempt + 1), 100);
@@ -730,7 +1087,13 @@
       if (kind === "excel") {
         const hit = state.homeExcelHits[index] || null;
         if (!hit) return;
-        openExcelSheet(hit.sheetId, Number(hit.row) || 0);
+        const query = String($("homeSearch")?.value || "").trim();
+        openExcelSheet(
+          hit.sheetId,
+          Number(hit.row) || 0,
+          Number.isFinite(Number(hit.col)) ? Number(hit.col) : -1,
+          query,
+        );
         return;
       }
       if (kind === "docs") {
@@ -748,13 +1111,6 @@
       openProtoHit(item);
     });
 
-    function applyExcelEditability() {
-      const editable = state.excelEditing;
-      for (const cell of document.querySelectorAll("#excelTableWrap .excel-cell")) {
-        if (editable) cell.setAttribute("contenteditable", "true");
-        else cell.removeAttribute("contenteditable");
-      }
-    }
     function paintExcelMode() {
       for (const btn of document.querySelectorAll("[data-excel-mode]")) {        btn.classList.toggle("active", (btn.getAttribute("data-excel-mode") === "edit") === state.excelEditing);
       }
@@ -815,12 +1171,58 @@
       selectFile(item.getAttribute("data-excel-file"));
     });
     $("excelSheets")?.addEventListener("click", (event) => {
+      if (event.target.closest("[data-excel-find-clear]")) {
+        event.preventDefault();
+        window.clearTimeout(state.excelFindTimer);
+        clearExcelMatches();
+        $("excelFindInput")?.focus();
+        return;
+      }
+      const step = event.target.closest("[data-excel-match-step]");
+      if (step) {
+        event.preventDefault();
+        if (step.disabled) return;
+        stepExcelMatch(Number(step.getAttribute("data-excel-match-step") || 0));
+        return;
+      }
       const item = event.target.closest("[data-sheet-id]");
       if (!item) return;
       const raw = item.getAttribute("data-sheet-id") || "";
       let id = raw;
       try { id = decodeURIComponent(raw); } catch { id = raw; }
       selectSheet(id);
+    });
+    $("excelSheets")?.addEventListener("input", (event) => {
+      const input = event.target.closest?.("#excelFindInput");
+      if (!input) return;
+      scheduleExcelFind(input.value);
+    });
+    $("excelSheets")?.addEventListener("keydown", (event) => {
+      const input = event.target.closest?.("#excelFindInput");
+      if (!input) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        window.clearTimeout(state.excelFindTimer);
+        clearExcelMatches();
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        window.clearTimeout(state.excelFindTimer);
+        const q = String(input.value || "").trim();
+        state.excelFindQuery = q;
+        if (!q) {
+          clearExcelMatches();
+          return;
+        }
+        // 回车 = 向下箭头；Shift+Enter = 向上箭头
+        if (state.excelMatch?.items?.length && String(state.excelMatch.query || "").trim() === q) {
+          stepExcelMatch(event.shiftKey ? -1 : 1);
+          return;
+        }
+        const sheetId = state.activeSheetId || sheetsOfFile(state.activeFile)[0]?.id;
+        if (sheetId) loadExcelMatches(q, sheetId);
+      }
     });
 
     // 单元格编辑：回车提交并下移，Esc 还原
@@ -849,6 +1251,35 @@
       if (cell) commitExcelCell(cell);
     });
 
+    // 滚轮 = 纵向；按住右键 + 滚轮 = 横向（避免和单元格编辑冲突）
+    let excelRightPan = false;
+    let excelRightScrolled = false;
+    tableWrap?.addEventListener("mousedown", (event) => {
+      if (event.button === 2) {
+        excelRightPan = true;
+        excelRightScrolled = false;
+      }
+    });
+    const endExcelRightPan = () => { excelRightPan = false; };
+    window.addEventListener("mouseup", (event) => {
+      if (event.button === 2) endExcelRightPan();
+    });
+    tableWrap?.addEventListener("mouseleave", endExcelRightPan);
+    tableWrap?.addEventListener("contextmenu", (event) => {
+      if (excelRightScrolled) {
+        event.preventDefault();
+        excelRightScrolled = false;
+      }
+    });
+    tableWrap?.addEventListener("wheel", (event) => {
+      const holdRight = excelRightPan || (event.buttons & 2) === 2;
+      if (!holdRight) return; // 单独滚轮：浏览器默认纵向滚动
+      event.preventDefault();
+      excelRightScrolled = true;
+      const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+      tableWrap.scrollLeft += delta;
+    }, { passive: false });
+
     $("excelReload")?.addEventListener("click", () => {
       ensureExcelCatalog(true);
       try { window.OceanViewDocs?.reload?.(); } catch { /* ignore */ }
@@ -859,6 +1290,15 @@
     // Tab Tab 打开首页（输入框内不劫持）
     let lastTabAt = 0;
     document.addEventListener("keydown", (event) => {
+      // Excel 表内查找：Ctrl/Cmd+F
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && String(event.key || "").toLowerCase() === "f") {
+        if (state.view === "excel" || document.body.dataset.view === "excel") {
+          event.preventDefault();
+          event.stopPropagation();
+          focusExcelFind(true);
+          return;
+        }
+      }
       if (event.key !== "Tab" || event.ctrlKey || event.metaKey || event.altKey) {
         if (event.key !== "Tab") lastTabAt = 0;
         return;
@@ -883,9 +1323,15 @@
   window.OceanViewHome = {
     /** 供 Tab 搜索的 Excel 分类使用 */
     searchExcel(query, onHits) {
-      pendingSearch = typeof onHits === "function" ? onHits : null;
-      post("excelSearch", { query });
+      const seq = ++excelSearchSeq;
+      pendingSearch = typeof onHits === "function" ? { seq, cb: onHits } : null;
+      const ok = post("excelSearch", { query, requestId: seq });
+      if (!ok) pendingSearch = null;
       return pendingSearch !== null;
+    },
+    /** 首次打开搜索前预热索引，避免第一次查询干等 */
+    warmExcelIndex() {
+      ensureExcelCatalog(false);
     },
     /** 扩展标题栏快速入口 / 自定义编辑器跳转：切到对应 View Client，并尽量定位到当前文件 */
     openTargetView(view, target = "") {
@@ -924,8 +1370,8 @@
       renderExcelList();
       updateExcelDiffButton();
     },
-    openSheet(id, row = 0) {
-      openExcelSheet(id, row);
+    openSheet(id, row = 0, col = -1, query = "") {
+      openExcelSheet(id, row, col, query);
     },
     sheets() {
       return state.sheets.slice();
@@ -1049,7 +1495,8 @@
   initSides();
 
   let pendingSearch = null;
-  let pendingHomeExcel = false;
+  let pendingHomeExcel = null;
+  let excelSearchSeq = 0;
   state.homeExcelHits = [];
   state.homeDocsHits = [];
   state.homeDbHits = [];

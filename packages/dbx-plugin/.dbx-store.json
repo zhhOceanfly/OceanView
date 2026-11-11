@@ -7,7 +7,7 @@
   "source": "https://github.com/zhhOceanfly/OceanView",
   "homepage": "https://github.com/zhhOceanfly/OceanView",
   "license": "MIT",
-  "releaseNotes": "v0.1.1: align with OceanView 0.1.1. Flow variables, enum names in gRPC responses, shared Client environment with per-node override. Still requires Node.js >= 18 on PATH.",
+  "releaseNotes": "v0.1.2: ExcelView search jumps to row/cell without clipping Luban header rows; first-search indexing warmup and requestId race fix. Still requires Node.js >= 18 on PATH.",
   "localizations": {
     "zh-CN": {
       "name": "OceanView",

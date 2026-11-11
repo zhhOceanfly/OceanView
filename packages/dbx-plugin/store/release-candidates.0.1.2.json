@@ -1,0 +1,35 @@
+{
+  "plugin": {
+    "id": "io.github.zhhoceanfly.oceanview",
+    "publisher": "zhhoceanfly",
+    "version": "0.1.2",
+    "name": "OceanView",
+    "description": "Browse Protobuf and debug gRPC / HTTP / SSE / WebSocket APIs inside DBX. Requires Node.js >= 18 on PATH (sidecar runs runtime/sidecar.js via node).",
+    "permissions": [
+      "host.binary",
+      "host.events",
+      "host.storage",
+      "host.workbench"
+    ]
+  },
+  "artifacts": [
+    {
+      "target": "darwin-arm64",
+      "url": "io.github.zhhoceanfly.oceanview-0.1.2-darwin-arm64.dbxp",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "size": 0
+    },
+    {
+      "target": "linux-x64",
+      "url": "io.github.zhhoceanfly.oceanview-0.1.2-linux-x64.dbxp",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "size": 0
+    },
+    {
+      "target": "windows-x64",
+      "url": "io.github.zhhoceanfly.oceanview-0.1.2-windows-x64.dbxp",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "size": 0
+    }
+  ]
+}

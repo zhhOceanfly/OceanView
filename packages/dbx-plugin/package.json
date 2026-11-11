@@ -1,6 +1,6 @@
 {
   "name": "@zhhoceanfly/oceanview-dbx",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "OceanView as a DBX (.dbxp) plugin; requires Node.js >= 18 on PATH",
   "license": "MIT",

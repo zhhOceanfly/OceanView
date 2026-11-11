@@ -239,6 +239,7 @@
     codeLoading: false,
     excelHits: [],
     excelLoaded: false,
+    excelLoading: false,
     excelQuery: "",
     docsHits: [],
     docsQuery: "",
@@ -3917,26 +3918,41 @@
     if (!query) {
       globalSearch.excelHits = [];
       globalSearch.excelLoaded = false;
+      globalSearch.excelLoading = false;
       return;
     }
     if (globalSearch.excelLoaded && globalSearch.excelQuery === query) return;
     globalSearch.excelQuery = query;
-    window.OceanViewHome?.searchExcel?.(query, (hits) => {
+    globalSearch.excelLoading = true;
+    if (globalSearch.tab === "excel" || globalSearch.tab === "all") refreshGlobalSearchList();
+    const asked = window.OceanViewHome?.searchExcel?.(query, (hits) => {
+      // 输入已变时丢弃过期回包
+      if (globalSearch.excelQuery !== query) return;
+      globalSearch.excelLoading = false;
       globalSearch.excelLoaded = true;
       globalSearch.excelHits = (Array.isArray(hits) ? hits : []).map((hit) => {
         const count = Number(hit.count || 0);
         const fileName = hit.fileName || String(hit.relative || "").split(/[/\\]/).pop() || hit.sheet || "";
+        const col = Number(hit.col);
         return {
           kind: "excel",
           title: fileName,
           sub: `${hit.sheet || ""}${count ? ` · ${count} 处` : ""}${hit.row ? ` · 行 ${hit.row}` : ""}`,
           sheetId: hit.sheetId,
           row: Number(hit.row || 0),
+          col: Number.isFinite(col) ? col : -1,
+          query,
           hay: `${fileName} ${hit.sheet || ""} ${hit.relative || ""} ${hit.preview || ""}`.toLowerCase(),
         };
       });
       if (globalSearch.tab === "excel" || globalSearch.tab === "all") refreshGlobalSearchList();
     });
+    if (!asked) {
+      globalSearch.excelLoading = false;
+      globalSearch.excelLoaded = true;
+      globalSearch.excelHits = [];
+      if (globalSearch.tab === "excel" || globalSearch.tab === "all") refreshGlobalSearchList();
+    }
   }
 
   function refreshDocsHits() {
@@ -3983,9 +3999,16 @@
     const list = $("globalSearchList");
     if (!list) return;
     if (!globalSearch.items.length) {
-      const loading = (globalSearch.tab === "func" || globalSearch.tab === "const" || globalSearch.tab === "all")
+      const codeLoading = (globalSearch.tab === "func" || globalSearch.tab === "const" || globalSearch.tab === "all")
         && globalSearch.codeLoading;
-      list.innerHTML = `<div class="global-search-empty">${loading ? "正在扫描项目代码…" : "没有匹配结果"}</div>`;
+      const excelLoading = (globalSearch.tab === "excel" || globalSearch.tab === "all")
+        && globalSearch.excelLoading;
+      const tip = codeLoading
+        ? "正在扫描项目代码…"
+        : excelLoading
+          ? "正在索引 / 搜索 Excel…"
+          : "没有匹配结果";
+      list.innerHTML = `<div class="global-search-empty">${tip}</div>`;
       return;
     }
     list.innerHTML = globalSearch.items.map((item, index) => {
@@ -4028,6 +4051,8 @@
     input.value = "";
     renderGlobalSearchTabs();
     ensureCodeSymbols();
+    // 打开搜索时后台预热 Excel 索引，避免第一次输入干等/误判无结果
+    try { window.OceanViewHome?.warmExcelIndex?.(); } catch { /* ignore */ }
     refreshGlobalSearchList();
     requestAnimationFrame(() => input.focus());
   }
@@ -4164,12 +4189,19 @@
     requestAnimationFrame(() => db.openTableByName(target));
   }
 
-  /** Excel 结果：切到 ExcelView 并定位到表/行 */
+  /** Excel 结果：切到 ExcelView 并定位到表/行/单元格，同时加载同文件全部命中供上下跳转 */
   function openExcelSheet(item) {
     const sheetId = String(item?.sheetId || "");
     if (!sheetId) return;
     closeGlobalSearch();
-    window.OceanViewHome?.openSheet?.(sheetId, Number(item.row) || 0);
+    const col = Number(item.col);
+    const query = String(item?.query || $("globalSearchInput")?.value || "").trim();
+    window.OceanViewHome?.openSheet?.(
+      sheetId,
+      Number(item.row) || 0,
+      Number.isFinite(col) ? col : -1,
+      query,
+    );
   }
 
   function applyGlobalSearchItem(item) {
@@ -4223,6 +4255,7 @@
   $("globalSearchInput")?.addEventListener("input", () => {
     globalSearch.active = 0;
     globalSearch.excelLoaded = false;
+    globalSearch.excelLoading = false;
     globalSearch.excelHits = [];
     globalSearch.docsHits = [];
     globalSearch.docsQuery = "";
